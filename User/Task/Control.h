@@ -76,6 +76,8 @@ typedef struct
     float Vbat;           // 电池电压(V), 取自 Sensor.BatV
     float V_Comp;         // 电压补偿系数(推力->占空比 前乘)
     float Thrust[4];      // 混控后的推力指令(0~100, 归一化推力域)
+                          // 下标 0~3 = 1~4号电机 -> TIM4 CH1~CH4
+                          // 十字(+)型机架方位: 0=左臂 1=后臂 2=右臂 3=前臂
     float Duty[4];        // 最终占空比(0~100, 已含曲线反解与电压补偿)
 } Control_StructTypedef;
 

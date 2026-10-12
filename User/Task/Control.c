@@ -546,11 +546,19 @@ void Control_Task(void *argument)
         float dmax, dmin, range, s = 1.0f;
         float base, base_min, base_max;
 
-        /* 姿态差动(不含总距) */
-        diff[0] =  Control.T_Pitch + Control.T_Roll - Control.T_Yaw;
-        diff[1] =  Control.T_Pitch - Control.T_Roll + Control.T_Yaw;
-        diff[2] = -Control.T_Pitch + Control.T_Roll + Control.T_Yaw;
-        diff[3] = -Control.T_Pitch - Control.T_Roll - Control.T_Yaw;
+        /* 机架: 十字(+)型 —— 四个机臂分别朝 左/后/右/前
+         *       电机1=左臂(CW)  电机2=后臂(CCW)  电机3=右臂(CW)  电机4=前臂(CCW)
+         *       CW/CCW = 俯视桨的旋转方向
+         * 姿态差动(不含总距)。信号约定与旧 X 型混控完全一致,
+         * 因此 PID 参数、遥控方向、姿态环符号都不需要改:
+         *   T_Pitch > 0 -> 前臂加速、后臂减速 -> 抬头
+         *   T_Roll  > 0 -> 左臂加速、右臂减速 -> 右滚
+         *   T_Yaw   > 0 -> 顺时针(CW)桨加速 -> 机身反扭逆时针 -> 左偏航
+         * 规律: 俯仰 前+ 后-, 横滚 左+ 右-, 偏航 CW+ CCW- */
+        diff[0] =  Control.T_Roll  + Control.T_Yaw;      /* 1号 左臂 CW  */
+        diff[1] = -Control.T_Pitch - Control.T_Yaw;      /* 2号 后臂 CCW */
+        diff[2] = -Control.T_Roll  + Control.T_Yaw;      /* 3号 右臂 CW  */
+        diff[3] =  Control.T_Pitch - Control.T_Yaw;      /* 4号 前臂 CCW */
 
         dmax = diff[0]; dmin = diff[0];
         for (uint8_t i = 1; i < 4; i++)
