@@ -8,7 +8,7 @@
 #include "math.h"   // sinf/cosf/sqrtf/atan2f (四元数姿态误差 & 倾斜补偿)
 
 #define Duty_Max 90.0f
-
+//测试
 #define CONTROL_TILT_COMPENSATION 1         /* 倾斜油门补偿 */
 #define CONTROL_MIN_COS_TILT      0.7071f   /* 补偿上限: 等效约45°, 防除0 */
 
