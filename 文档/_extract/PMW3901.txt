@@ -1,0 +1,521 @@
+==== PMW3901.pdf pages=11 ====
+--- page 1 ---
+  
+ 
+ 
+1 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+ 
+PixArt Imaging Inc. 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+Version 1.00 |20 Mar 2017 
+PMW3901MB-TXQT: Optical Motion Tracking Chip
+Product Datasheet 
+General Description 
+The PMW3901MB-TXQT is PixArt Imaging's latest optical 
+navigation chip designed with far field optics technology 
+that enables navigation in the air. It is housed in a 28-pin 
+chip-on-board (COB) package that provides X-Y motion 
+information with a wide working range of 80 mm to 
+infinity. It is most suitable for far field application for 
+motion detection. 
+Key Features 
+ Wide working range from 80 mm to infinity 
+ No lens focusing required during lens mounting 
+process 
+ Power consumption of 9 mA @ run mode  
+ 16-bits motion data registers 
+ Motion detect pin output 
+ Internal oscillator – no clock input needed 
+Applications 
+ Devices that require far field motion detection, e.g 
+Drone 
+ Indoor and outdoor X-Y positioning especially in GPS 
+denied environment 
+ 
+Key Parameters  
+Parameter Value 
+Supply Voltage (V) VDD: 1.8 – 2.1 
+VDDIO: 1.8 – 3.6 
+Working Range (mm) 80 to infinity 
+Interface 4-Wire SPI @ 2 MHz 
+Package Type 28-pin COB Package with 
+Lens Assembly: 
+6 x 6 x 2.28 mm 
+Ordering Information 
+Part Number Package Type 
+PMW3901MB-TXQT 28-pin COB Package 
+LN03-ZSZ Lens Assembly 
+ 
+For any additional inquiries, please contact us at 
+http://www.pixart.com/contact.asp 
+ 
+
+--- page 2 ---
+  
+ 
+ 
+7 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+1.3 Signal Description 
+ 
+ 
+Figure 2. Pin Configuration 
+ 
+Table 1. Signal Pins Description 
+Pin No. Signal Name Type Description 
+Functional Group: Power Supplies 
+2 VDD Power Input power supply 
+3 VDDIO Power I/O reference voltage 
+4 VREG Power Internal voltage output 
+1 GND Ground Ground 
+21 GND Ground Ground 
+Functional Group: Control Interface 
+16 MOSI Input Serial data input 
+17 SCLK Input Serial data clock 
+18 MISO Output Serial data output 
+19 NCS Input Chip select 
+Functional Group: Functional I/O 
+7 NRESET Input Hardware reset (Active low) 
+15 MOTION Output Motion interrupt (Active low) 
+Functional Group: Special Function Pin 
+5 - 6 NC NC No connection (float) 
+8 - 14 NC NC No connection (float) 
+20 NC NC No connection (float) 
+22 - 28 NC NC No connection (float) 
+29* GND PAD Ground Pad Bottom of COB package must be connected to circuit ground 
+
+--- page 3 ---
+  
+ 
+ 
+8 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+ Operating Specifications 
+2.1 Absolute Maximum Ratings 
+Table 2. Absolute Maximum Ratings 
+Parameters Symbol Min. Max. Unit Notes 
+Storage Temperature TS -40 85 °C  
+Lead-Free Solder 
+Temperature TSOLDER  260 °C  
+Supply Voltage VDD -0.5 2.1 V  
+VDDIO -0.5 3.6 V  
+Input Voltage VIN -0.5 3.6 V All I/O pins 
+ESD ESDHBM  2 kV All pins (Human Body Model) 
+Notes: 
+1. Maximum Ratings are those values beyond which damage to the device may occur.  
+2. Exposure to these conditions or conditions beyond those indicated may adversely affect device reliability. Functional 
+operation under absolute maximum-rated conditions is not implied.  
+3. Functional operation should be restricted to the Recommended Operating Conditions. 
+ 
+2.2 Recommended Operating Conditions 
+Table 3. Recommended Operating Conditions 
+Description Symbol Min. Typ. Max. Unit Notes 
+Operating Temperature  TA 0  40 °C  
+Power Supply Voltage VDD 1.8 2.0 2.1 V Including supply noise 
+VDDIO 1.8 2.0 3.6 V VDDIO ≥ VDD 
+Power Supply Rise Time tRT 0.15  20 ms 0 to VDD min 
+Supply Noise (Sinusoidal) VNA   100 mVp-p 10 kHz – 75 MHz 
+Serial Port Clock Frequency fSCLK   2 MHz 50% duty cycle 
+Working Range Z 80   mm  
+Effective Viewing Angle VA  42  °  
+Illuminance Lx 110   lux 
+Tested under florescent light 
+on crimson carpet, light grey 
+vinyl & light grey cement 
+surfaces. 
+Speed S   7.4 rad/s  
+Note: PixArt does not guarantee the performance of the system beyond the recommended operating condition limits. 
+ 
+  
+--- page 4 ---
+  
+ 
+ 
+9 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+2.3 DC Characteristics 
+Table 4. DC Electrical Specifications 
+Parameters Symbol Min. Typ. Max. Unit Conditions 
+Supply Current IDD_RUN  9  mA Average current.  
+No load on MISO, MOTION.  
+Power Down Current IPD  12  uA  
+Input Low Voltage VIL   0.3*VDDIO V SCLK, MOSI, NCS 
+Input High Voltage VIH 0.7*VDDIO   V SCLK, MOSI, NCS 
+Input Hysteresis VI_HYS  100  mV SCLK, MOSI, NCS 
+Input Leakage Current ILEAK  ± 1 ± 10 uA Vin = VDDIO or 0V,  
+SCLK, MOSI, NCS 
+Output Low Voltage VOL   0.45 V  IOUT = 1mA, MISO, MOTION 
+Output High Voltage VOH VDDIO - 0.45   V IOUT = -1mA, MISO, MOTION 
+Note: All the parameters are tested under operating conditions: VDD = 2.0V, VDDIO = 2.0V, TA = 25°C. 
+ 
+  
+--- page 5 ---
+  
+ 
+ 
+10 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+2.4 AC Characteristics 
+Table 5. AC Electrical Specifications 
+Parameters Symbol Min. Typ. Max. Unit Conditions 
+Motion Delay After Reset tMOT-RST 50   ms From reset to valid motion, 
+assuming motion is present 
+Shutdown tSTDWN   500 us From Shutdown mode active to 
+low current 
+Wake from Shutdown tWAKEUP 50   ms 
+From Shutdown mode inactive 
+to valid motion. Notes: A RESET 
+must be asserted after a 
+shutdown. Refer to section 
+“Notes on Shutdown”, also 
+note tMOT-RST. 
+MISO Rise Time tr-MISO  50  ns CL = 100pF 
+MISO Fall Time tf-MISO  50  ns CL = 100pF 
+MISO Delay After SCLK tDLY-MISO   120 ns From SCLK falling edge to MISO 
+data valid, no load conditions 
+MISO Hold Time thold-MISO 200   ns Data held until next falling SCLK 
+edge 
+MOSI Hold Time thold-MOSI 200   ns Amount of time data is valid 
+after SCLK rising edge 
+MOSI Setup Time tsetup-MOSI 120   ns From data valid to SCLK rising 
+edge 
+SPI Time Between Write 
+Commands tSWW 45   s 
+From rising SCLK for last bit of 
+the first data byte, to rising 
+SCLK for last bit of the second 
+data byte. 
+SPI Time Between Write And 
+Read Commands tSWR 45   s 
+From rising SCLK for last bit of 
+the first data byte, to rising 
+SCLK for last bit of the second 
+address byte. 
+SPI Time Between Read And 
+Subsequent Commands 
+tSRW 
+tSRR 20   s 
+From rising SCLK for last bit of 
+the first data byte, to falling 
+SCLK for the first bit of the 
+address byte of the next 
+command. 
+SPI Read Address-Data Delay tSRAD 35   s 
+From rising SCLK for last bit of 
+the address byte, to falling SCLK 
+for first bit of data being read. 
+--- page 6 ---
+  
+ 
+ 
+11 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+NCS Inactive After Motion Burst tBEXIT 500   ns 
+Minimum NCS inactive time 
+after motion burst before next 
+SPI usage 
+NCS To SCLK Active tNCS-SCLK 120   ns From last NCS falling edge to 
+first SCLK rising edge 
+SCLK To NCS Inactive  
+(For Read Operation) tSCLK-NCS 120   ns 
+From last SCLK rising edge to 
+NCS rising edge, for valid MISO 
+data transfer 
+SCLK To NCS Inactive  
+(For Write Operation) tSCLK-NCS 35   s 
+From last SCLK rising edge to 
+NCS rising edge, for valid MOSI 
+data transfer 
+NCS To MISO High-Z tNCS-MISO   500 ns From NCS rising edge to MISO 
+high-Z state 
+MOTION Rise Time tr-MOTION  50  ns CL = 100pF 
+MOTION Fall Time tf-MOTION  50  ns CL = 100pF 
+Input Capacitance Cin  50  pF SCLK, MOSI, NCS 
+Load Capacitance CL   100 pF MISO, MOTION 
+Transient Supply Current 
+IDDT   70 mA 
+Max supply current during the 
+supply ramp from 0V to VDD 
+with min 150 us and max 20 ms 
+rise time (does not include 
+charging currents for bypass 
+capacitors). 
+IDDTIO   70 mA 
+Max supply current during the 
+supply ramp from 0V to VDDIO 
+with min 150 us and max 20 ms 
+rise time (does not include 
+charging currents for bypass 
+capacitors). 
+Note: All the parameters are tested under operating conditions: VDD = 2.0V, VDDIO = 2.0V, TA = 25°C. 
+ 
+  
+--- page 7 ---
+  
+ 
+ 
+12 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+ Mechanical Specifications 
+3.1 Package Marking 
+Refer Figure 2. Pin Configuration for the code marking location on the device package. 
+Table 6. Code Identification 
+Code Marking Description 
+Product Number P3901 Part number label 
+Lot Code YWX 
+Y: Year 
+W: Week 
+X: Reserved as PixArt reference 
+ 
+3.2 Package Outline Drawing 
+ 
+ 
+ 
+CAUTION: It is advised that normal static discharge precautions be taken in handling and assembling of this component to 
+prevent damage and/or degradation which may be induced by ESD. 
+ 
+Figure 3. Package Outline Drawing  
+
+--- page 8 ---
+  
+ 
+ 
+13 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+3.3 Assembly Drawings 
+ 
+ 
+ 
+Figure 4. System Assembly View 
+ 
+ 
+ 
+Figure 5. Exploded View of System Assembly 
+
+--- page 9 ---
+  
+ 
+ 
+14 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+ 
+Note: Bottom center pad of COB package must be connected to circuit ground. 
+ 
+Figure 6. Recommended PCB Layout 
+ 
+ 
+Figure 7. Lens Outline Drawing  
+
+--- page 10 ---
+  
+ 
+ 
+15 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+ System Level Description 
+4.1 Reference Schematic 
+ 
+PMW3901MB
+1
+2
+3
+4
+5
+6
+7
+21
+20
+19
+18
+17
+16
+15
+8 9 10 11 12 13 14
+28 27 26 25 24 23 22
+MOTIONNRESET
+SCLK
+NC
+GND
+VDD
+VDDIO
+VREG
+NC
+NC
+NC
+NC
+NC
+NC
+NC
+NC
+MISO
+NCS
+GND
+NC
+C1
+22uF
+Note:
+1. All capacitors must be placed as close as possible to VDD, VDDIO & VREG pins.
+2. Ceramic non-polarity capacitors are recommended.
+29*
+GND PAD
+1
+2
+3
+9
+SCLK
+MISO
+MOTION
+VDD
+GND
+R2
+10kΩ
+MCU
+4
+8
+MOSI
+VDDIO
+NCS
+7
+VDDIO
+R3
+10kΩ
+6
+NC
+NC
+NC
+NC
+NC
+NC
+NC
+MOSI
+VDD
+C2
+22uF
+C3
+100nF
+R1
+3Ω
+VDDIO
+C4
+10uF
+C5
+100nF
+C6
+4.7uF
+C7
+100nF 5NRESET
+R4
+10kΩ
+ 
+ 
+Figure 8. PMW3901MB Reference Schematics 
+ 
+  
+--- page 11 ---
+  
+ 
+ 
+29 
+PixArt Imaging Inc. 
+PMW3901MB Product Datasheet 
+Optical Motion Tracking Chip 
+ 
+Version 1.00 |20 Mar 2017 
+PixArt Imaging Inc. http://www.pixart.com 
+All rights reserved. Any portion in this paper shall not be reproduced, copied, or transformed to any other forms without permission. 
+ Registers 
+8.1 Registers List 
+PMW3901MB registers are accessible via the serial port. The registers are used to read motion data and status as well as 
+to set the device configuration. 
+Table 9. Register List 
+Address Register Name Access Reset Address Register Name Access Reset 
+0x00 Product_ID RO 0x49 0x0A Minimum_RawData RO 0x00 
+0x01 Revision_ID RO 0x00 0x0B Shutter_Lower RO 0x00 
+0x02 Motion R/W 0x00 0x0C Shutter_Upper RO 0x00 
+0x03 Delta_X_L RO 0x00 0x15 Observation R/W 0x00 
+0x04 Delta_X_H RO 0x00 0x16 Motion_Burst RO 0x00 
+0x05 Delta_Y_L RO 0x00 0x3A Power_Up_Reset WO N/A 
+0x06 Delta_Y_H RO 0x00 0x3B Shutdown WO N/A 
+0x07 Squal RO 0x00 0x58 RawData_Grab R/W 0x00 
+0x08 RawData_Sum RO 0x00 0x59 RawData_Grab_Status RO 0x00 
+0x09 Maximum_RawData RO 0x00 0x5F Inverse_Product_ID RO 0xB6 
+ 
+8.2 Performance Optimization Registers 
+Upon power-up of PMW3901MB, there are a number of registers to configure in order to achieve optimum performance 
+of the chip. These registers are PixArt proprietary information, thus no additional information is provided in this datasheet 
+with regards to these register’s descriptions. These registers should be written in sequence as outlined below: 
+Table 10. Performance Optimization Registers 
+Address Value 
+0x7F 0x00 
+0x61 0xAD 
+0x7F 0x03 
+0x40 0x00 
+0x7F 0x05 
+0x41 0xB3 
+0x43 0xF1 
+0x45 0x14 
+0x5B 0x32 
+0x5F 0x34 
+0x7B 0x08 
+0x7F 0x06 
+0x44 0x1B 
+0x40 0xBF 
+0x4E 0x3F 

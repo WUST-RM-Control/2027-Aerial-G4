@@ -1,0 +1,1598 @@
+==== VL53l1.pdf pages=39 ====
+--- page 1 ---
+This is information on a product in full production. 
+June 2022 DocID029631 Rev 12 1/39
+VL53L1
+New generation Time-of-Flight ranging sensor with advanced 
+multi-zone and multi-object detection
+DatasheetRev 12 - production data
+Features
+ Fully integrated miniature module
+– Emitter: 940 nm invisible laser (VCSEL) 
+and its analog driver 
+– Receiving array with integrated lens
+– Low-power microcontroller running 
+advanced digital firmware
+– Size: 4.9 x 2.5 x 1.56 mm
+ Fast, accurate distance ranging
+– 400 cm+ detection wit h full field of view 
+(FoV)
+– 60 Hz ranging capable up to 300 cm
+– Immune to coverglass cross-talk and 
+fingerprint smudge at long distance with 
+patented algorithms (direct ToF)
+– Multi-object detection capability
+– Multi-zone scanning with selectable array 
+(2x2, 3x3, 4x4, or defined by user through 
+software)
+ Easy integration
+– Reflowable component
+– Single power supply 2v8
+– Works with many types of cover glass 
+materials
+– I²C interface  (up to 1 MHz)
+– Xshutdown (reset) a nd interrupt GPIO
+– Full set of software driver (Linux® and 
+Android compatible) for turnkey ranging
+Applications
+ Laser assisted auto-focus (AF): enhances the 
+camera AF system speed and robustness, 
+especially in difficult scenes (low light and low 
+contrast); ideal companion for PDAF sensors
+ Video focus tracking assistance at 60 Hz
+ Scene understanding with multi-object 
+detection: “choose the focus point”
+ Dual camera stereoscopy and 3D depth 
+assistance thanks to multi-zone measurement
+ Presence detection (autonomous timed mode), 
+typically to lock/unlock and power on/off 
+devices like notebooks, tablets or white goods 
+Description
+The VL53L1 is a state-of-the-art, Time-of-Flight 
+(ToF), laser-ranging, miniature sensor enhancing 
+STMicroelectronics’ FlightSense product family. 
+Housed in a miniature and reflowable package, it 
+integrates a single photon avalanche diode 
+(SPAD) array, physical infrared filters and optics 
+to achieve the best ranging performance in 
+various ambient lighting conditions, with a wide 
+range of cover windows.
+Unlike conventional IR sensors, the VL53L1 uses 
+ST’s latest generation direct ToF technology 
+which allows absolute distance measurement 
+whatever the target color and reflectance. It 
+provides accurate ranging above 4 m and can 
+work at fast speeds (60 Hz), which makes it the 
+fastest miniature ToF sensor on the market.
+With patented algorithms and ingenious module 
+construction, the VL53L1 is also able to detect 
+different objects within the field of view (FoV) with 
+depth understanding at 60 Hz.
+Scene browsing and multi-zone detection is now 
+possible with the VL53L1, thanks to software 
+customizable detection array for quicker “touch-
+to-focus” or mini depth-map use cases.
+www.st.com
+--- page 2 ---
+Contents VL53L1
+2/39 DocID029631 Rev 12
+Contents
+1 Product overview  . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+1.1 Technical specification  . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . 4
+1.2 System block diagram  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+1.3 Device pinout  . . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . 5
+1.4 Application schematic . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2 Functional description  . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+2.1 System functional description . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+2.2 Firmware state machine description . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . 9
+2.3 Customer manufacturing calibration flow . . . . . . . . . . . . . . . . . . . . . . . . . 10
+2.4 Device programming and control . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . 10
+2.5 Description of operating “preset” modes  . . . . . . . . . .  . . . . . . . . . . . . . . . 10
+2.6 Digital processing and reading the results . . . . . . . . .  . . . . . . . . . . . . . . . .11
+2.7 Reading of the results  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .11
+2.8 Power sequence . . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . 12
+2.8.1 Power-up and boot sequence  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+2.9 Ranging sequence . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . 13
+2.10 Handshake management . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+3 Control interface  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+3.1 I 2C interface - timing characteristics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+3.2 I 2C interface - reference registers  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+4 Electrical characteristics  . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+4.1 Absolute maximum ratings . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . 19
+4.2 Recommended operating conditions  . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+4.3 ESD  . . . . . . . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 19
+4.4 Current consumption  . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . 20
+4.5 Electrical characteristics . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . 21
+5 Ranging performances . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+5.1 Measurement conditions  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+--- page 3 ---
+DocID029631 Rev 12 3/39
+VL53L1 Contents
+39
+5.2 Minimum ranging distance . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . 22
+5.3 Ranging and Scanning modes: m ulti object detection . . . . .  . . . . . . . . . . 22
+5.4 Ranging and Scanning modes: full FoV performance  . . . . . . . . . . . . . . . 22
+5.5 Ranging and Scanning modes: partial FoV performances . . . .  . . . . . . . . 24
+5.5.1 Optical center definition . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+5.5.2 Partial FoV performan ces  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25
+5.6 Lite mode performances . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . 26
+5.7 Autonomous mode performances  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26
+6 Outline drawing . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+7 Laser safety considerations .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 30
+8 Packaging and labeling  . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31
+8.1 Product marking . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31
+8.2 Inner box labeling . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . 31
+8.3 Packing  . . . . . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . 31
+8.4 Tape outline drawing  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32
+8.5 Pb-free solder reflow process . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 33
+8.6 Handling and storage precautions  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34
+8.6.1 Shock precaution . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . 34
+8.6.2 Part handling  . . . . . . . . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . 34
+8.6.3 Compression force . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34
+8.6.4 Moisture sensitivity level  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 34
+8.7 Storage temperature conditions . . . . . . . . . . . . . . .  . . . . . . . . . . . . . . . . . 34
+9 Ordering information  . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35
+10 Acronyms and abbreviations . .  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35
+11 ECOPACK ® . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+12 Revision history  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 37
+--- page 4 ---
+Product overview VL53L1
+4/39 DocID029631 Rev 12
+1 Product overview
+1.1 Technical specification
+          
+1.2 System block diagram
+Figure 1. VL53L1 block diagram
+Table 1. Technical specification
+Feature Detail
+Package Optical LGA12
+Size 4.9 x 2.5 x 1.56 mm
+Operating voltage 2.6 to 3.5 V
+Operating temperature: -20 to 85°C
+Infrared emitter 940 nm
+ I2C Up to 1MHz (Fast mode plus) serial bus
+Address: 0x52
+--- page 5 ---
+DocID029631 Rev 12 5/39
+VL53L1 Product overview
+39
+1.3 Device pinout
+Figure 2 shows the pinout of the VL53L1 (see also Figure 17).
+Figure 2. VL53L1 pinout (bottom view)
+          
+Table 2. VL53L1 pin description 
+Pin number Signal name Signa l type Signal description
+1 AVDDVCSEL Supply VCSEL supply, to be connected to main supply
+2 AVSSVCSEL Ground VCSEL ground, t o be connected to main ground
+3 GND Ground To be connec ted to main ground
+4 GND2 Ground To be connec ted to main ground
+5 XSHUT Digital input Xshutdown pin, active low
+6 GND3 Ground To be connec ted to main ground
+7 GPIO1 Digital output Interrupt  output. Open drain output.
+8 DNC Digital input Do not connect, must be left floating.
+9S D A Digital 
+input/output I2C serial data
+10 SCL Digital input I 2C serial clock input
+11 AVDD Supply Supply, to be connected to main supply
+12 GND4 Ground To be conn ected to main ground
+--- page 6 ---
+Product overview VL53L1
+6/39 DocID029631 Rev 12
+1.4 Application schematic
+Figure 3 shows the application schematic of the VL53L1.
+Figure 3. VL53L1 schematic
+Note: Capacitors on external supply AVDD shou ld be placed as close as possible to the 
+AVDDVCSEL and AVSSVCSEL module pins.
+Note: External pull-up resistor values can be found in I2C-bus specification. Pull-ups are typically 
+fitted only once per bus, near the host. For suggested values see Table 3 and Table 4.
+Note: XSHUT pin must always be driven to avoi d leakage current. A pull-up is needed if the host 
+state is not known.
+XSHUT is needed to use HW standby mode (no I2C communication). 
+Note: XSHUT and GPIO1 pull up recommended values are 10 kOhms
+Note: GPIO1 to be left unconnected if not used
+Rserial
+Rserial
+For hardware interrupt
+--- page 7 ---
+DocID029631 Rev 12 7/39
+VL53L1 Product overview
+39
+Table 3 and Table 4 show recommended values for pull-up and series resistors for an AVDD 
+of 1.8 V to 2.8 V in I2C Fast mode (up to 400 kHz) and Fast mode plus (up to 1 MHz).
+          
+          
+Table 3. Suggested pull-up and series resistors for I2C Fast mode
+I2C load capacitance (CL) (1)
+1. For each bus line, C L is measured in application PCB by customer.
+Pull-up resistor (Ohms) S eries resistor (Ohms)
+CL ≤ 90 pF 3.6 k 0
+90 pF < CL ≤ 140 pF 2.4 k 0
+140 pF < CL ≤ 270 pF 1.2 k 0
+270 pF < CL ≤ 400 pF 0.8 k 0
+Table 4. Suggested pull-up and series resistors for I2C Fast mode plus
+I2C load capacitance (CL)(1)
+1. For each bus line, C L is measured in application PCB by customer.
+Pull-up resistor (Ohms) Series resistor (Ohms)
+CL ≤ 90 pF 1.5 k 100
+90 pF < CL ≤ 140 pF 1 k 50
+140 pF < CL ≤ 270 pF 0.5 k 50
+270 pF < CL ≤ 400 pF 0.3 k 50
+--- page 8 ---
+Functional description VL53L1
+8/39 DocID029631 Rev 12
+2 Functional description
+2.1 System functional description
+Figure 4 shows the system level functional description. The host custom er application 
+controls the VL53L1 device using an API (application programmin g interface). The API 
+implementation is delivered to the customer as a driver (Bare C  code, or Linux/Android 
+driver).
+The driver shares with the customer application a set of high level functions that allow 
+control of the VL53L1 firmware like initialization, ranging start/stop, setting the system 
+accuracy, and choice of ranging mode.
+The driver is a turnkey solution consisting of a set of “C” fun ctions that enables fast 
+development of end user applicati ons without the complication o f direct multiple register 
+access. The driver is structured in a way that it can be compil ed on any kind of platform 
+through a well abstracted platform layer. The driver package al l o w s  t h e  u s e r  t o  t a k e  f u l l  
+advantage of VL53L1 capabilities.
+A detailed description of the driver is available in the VL53L1 driver user manual
+(UM2133).
+The VL53L1 firmware fully manages the hardware register accesses.
+Section 2.2: Firmware state machine description details the firmware state machine.
+Figure 4. VL53L1 system functional description
+--- page 9 ---
+DocID029631 Rev 12 9/39
+VL53L1 Functional description
+39
+2.2 Firmware state  machine description
+Figure 5 shows the firmware state machine. 
+Figure 5. Firmware state machine
+3RZHU2II
++RVWUHPRYHV$9''
++RVWDSSOLHV$9''
++:6WDQGE\
++RVWORZHUV;6+87
++RVWUDLVHV;6+87
+6:6WDQGE\
++RVWFOHDUVLQWHUUXSW
+1H[WUDQJHVWDUWV
+DXWRPDWLFDOO\DIWHU+RVW
+KDVFOHDUHGWKHLQWHUUXSW
++RVWLQLWLDWHV6723
+$XWRPDWLFPRYH
+&RQWLQXRXV
+5DQJLQJ
+,QLWLDO%RRW
+6HOI&DOLEUDWLRQ
++RVWLQLWLDWHV67$57
+$XWRPDWLFPRYH
+--- page 10 ---
+Functional description VL53L1
+10/39 DocID029631 Rev 12
+2.3 Customer manufactu ring calibration flow
+The detailed procedure is provided in the VL53L1 driver user manual (UM2133).
+2.4 Device programming and control
+The VL53L1 physical control interface is I2C, described in Section 3: Control interface.
+A software layer (driver) is provided to control the device. Th is avoids complex I2C register 
+operations with turnkey functions to start, stop and read the ranging values.
+The driver structure and functions are described in the VL53L1 driver user manual 
+(UM2133).
+2.5 Description of operating “preset” modes
+The VL53L1 software driver proposes four turnkey operating mode s (called “preset”) to 
+allow fast and easy ranging in all customer applications:
+ Ranging mode
+ Multizone scanning mode
+ Lite ranging mode
+ Autonomous mode
+Ranging mode is the default (recommended) co nfiguration to the get best of the VL53L1 
+functionalities.
+ Ranging mode is natively immune to coverglass crosstalk and smudge beyond 
+80 cm. With patented algorithms (direct Time-of-Flight), a temporal filtering is possible 
+to distinguish crosstalk from object signal over long distance >  8 0  c m .  B e s t - i n - c l a s s  
+ranging performance of 300 cm+ with coverglass in place is now possible, and can be 
+reached with any computation unlike other sensors in the market.
+ Ranging mode can detect several objects concurrently within the  F o V .  U p  t o  f o u r  
+ranges can be output simultaneously by the software driver, to indicate objects range. 
+Check the latest software driver manual for further details.
+ Ranging mode is compatible with ROI (region of interest) selection: the user may chose 
+a custom FoV by software, from 4x4 SPADs (minimum size) up to 1 6x16 SP ADs (full 
+FoV). This gives full flexibility to support “touch-to-focus” or custom ranging.
+ Ranging operation is performed by default at 60 Hz once the dri ver function is called 
+(typical ranging operation lasts 16 ms). It includes internal h ousekeeping, ranging and 
+post-processing. 
+Multizone scanning  mode provides ranging results of a ll selected ROIs sequentially: 
+quadrant (4 zones), 9 zones, 16 zones or custom number of zones  and location. In each 
+ROI the VL53L1 system can also detect multiple objects, and the  software driver returns a 
+ranging quality level and signal, in addition to the distance in millimeters.
+Lite ranging  mode is recommended to minimize the post processing with a low-
+performance host (microcontroller or low frequency CPU).
+Autonomous mode triggers ranging interrupts under certain conditions: the user can set 
+distance thresholds, signal thresholds, and a timing interval between two consecutive 
+ranging operations.
+--- page 11 ---
+DocID029631 Rev 12 11/39
+VL53L1 Functional description
+39
+Note: Ranging, multizone scanning and lite rangin g modes require a handshake between the host 
+and the VL53L1, at each ranging operation. This handshake is mandatory to ensure the 
+right result is read by the host to continue the ranging operation.
+Please refer to section Section 2.10: Handshake management for further details.
+2.6 Digital processing a nd reading the results
+The digital processing  is the final operation of the ra nging sequence that computes, 
+validates or rejects a ranging measurement. Part of this proces sing is performed by the 
+VL53L1 internal firmware and completed on the host processor running the software driver.
+At the end of the digital processing, the ranging distance is computed by the VL53L1 itself. If 
+the distance cannot be measured (no target or weak signal), a c orresponding status error 
+code is generated and can be read by the host.
+2.7 Reading of the results
+The VL53L1 software driver provides turnkey functions to read o utput results after the 
+measurement:
+ Signal rate
+ Ranging distance per object detected
+ Min. and max. distances where object is located
+ Dmax and range quality level
+Full description is provided inside the VL53L1 driver user manual (UM2133)
+--- page 12 ---
+Functional description VL53L1
+12/39 DocID029631 Rev 12
+2.8 Power sequence
+2.8.1 Power-up and boot sequence
+There are two options available for device power-up/boot.
+Option 1: the XSHUT pin is connected and controlled from the host.
+This option optimizes power consumption as the VL53L1 can be completely powered off 
+when not used, and then woken up through the host GPIO (using the XSHUT pin).
+HW standby mode is defined as the period when AVDD is present and XSHUT is low.
+Figure 6. Power-up and boot sequence
+1. t BOOT is 1.2ms max.
+Option 2: the XSHUT pin is not controlled by the host, it is tied to AVDD through the pull-up 
+resistor.
+When the XSHUT pin is not controlled, the power-up sequence is presented in Figure 7. In 
+this case, the device goes automatically to SW STANDBY after FW BOOT, without entering 
+HW STANDBY.
+Figure 7. Power-up and boot sequence with XSHUT not controlled
+1. t BOOT is 1.2 ms max.
+Note: In all cases, XSHUT has to be raised only when AVDD is tied on. 
+
+--- page 13 ---
+DocID029631 Rev 12 13/39
+VL53L1 Functional description
+39
+2.9 Ranging sequence
+Figure 8. Ranging sequence
+1. t timing_budget is a parameter set by the user, using a dedicated driver function.
+2.10 Handshake management
+For all ranging modes described above, every time a ranging mea surement is available, an 
+interrupt is generated. The GPIO1 pin of the VL53L1 is then dri ven high. Once the host 
+reads the result the interrupt is cleared and the ranging sequence can repeat. If the interrupt 
+is not cleared, the ranging operation inside the VL53L1 is on h old. It allows a good 
+synchronization between the VL53L1 and the host, avoids loosing  results in case of delay 
+on the I2C bus, and is mandatory for multizone scanning operations.
+It is strongly recommended to use the hardware interrupt pin to manage this handshake. But 
+if not possible a software polling mode remains available.
+For more details please refer to VL53L1 user manual (UM2133)
+
+--- page 14 ---
+Control interface VL53L1
+14/39 DocID029631 Rev 12
+3 Control interface
+This section specifies the control interface. The I2C interface uses two signals: serial data 
+line (SDA) and serial clock line (SCL). Each device connected to the bus uses a unique 
+address and a simple master / slave relationships exists. 
+Both SDA and SCL lines are connected to a positive supply voltage using pull-up resistors 
+located on the host. Lines are only actively driven low. A high condition occurs when lines 
+are floating and the pull-up resistors pull lines up. When no data is transmitted both lines are 
+high. 
+Clock signal (SCL) generation is performed by the master device. The master device 
+initiates data transfer. The I2C bus on the VL53L1 has a maximum speed of 1 Mbits/s and 
+uses a device address of 0x52. 
+Figure 9. Data transfer protocol
+Information is packed in 8-bit packets (bytes) always followed by an acknowledge bit, Ac for 
+VL53L1 acknowledge and Am for master acknowledge (host bus master). The internal data 
+is produced by sampling SDA at a rising edge of SCL. The external data must be stable 
+during the high period of SCL. The exceptions to this are start (S) or stop (P) conditions 
+when SDA falls or rises respectively, while SCL is high.
+A message contains a series of bytes preceded by a start condition and followed by either a 
+stop or repeated start (another start condition but without a preceding stop condition) 
+followed by another message. The first byte contains the device address (0x52) and also 
+specifies the data direction. If the least significant bit is low (that is, 0x52) the message is a 
+master-write-to-the-slave. If the lsb is set (that is, 0x53) then the message is a master-read-
+from-the-slave.
+Figure 10. VL53L1 I2C device address: 0x52
+All serial interface communications with the Time-of-Flight sensor must begin with a start 
+condition. The VL53L1 module acknowledges the receipt of a valid address by driving the 
+SDA wire low. The state of the read/write bit (lsb of the address byte) is stored and the next 
+byte of data, sampled from SDA, can be interpreted. During a write sequence, the second 
+byte received provides a 16-bit index which points to one of the internal 8-bit registers. 
+12 7 8 Ac/Am
+Start condition
+Stop condition
+SDA
+SCL
+Acknowledge
+PS 3 4 56
+Address or data byte
+MSB LSB
+MSBit LSBit
+0101001 R / W
+--- page 15 ---
+DocID029631 Rev 12 15/39
+VL53L1 Control interface
+39
+Figure 11. VL53L1 data format (write)
+As data are received by the slave, they are written bit by bit to a serial/parallel register. After 
+each data byte has been received by the slave, an acknowledge is generated, the data are 
+then stored in the internal register addressed by the current index.
+During a read message, the contents of the register addressed by the current index is read 
+out in the byte following the device address byte. The contents of this register are parallel 
+loaded into the serial/parallel register and clocked out of the device by the falling edge of 
+SCL.
+Figure 12. VL53L1 data format (read)
+At the end of each byte, in both read and write message sequences, an acknowledge is 
+issued by the receiving device (that is, the VL53L1 for a write and the host for a read). 
+A message can only be terminated by the bus master, either by issuing a stop condition or 
+by a negative acknowledge (that is, not pulling the SDA line low) after reading a complete 
+byte during a read operation.
+The interface also supports auto-increment indexing. After the first data byte has been 
+transferred, the index is automatically incremented by 1. The master can therefore send 
+data bytes continuously to the slave until the slave fails to provide an acknowledge or the 
+master terminates the write communication with a stop condition. If the auto-increment 
+feature is used the master does not have to send address indexes to accompany the data 
+bytes.
+Figure 13. VL53L1 data format (sequential write)
+VL53L1 acknowledges Acknowledge from VL53L1 
+S AsADDRESS[7:0] INDEX[15:8] As DATA[7:0] As P
+0x52 (write)
+Start
+Stop
+valid address
+As INDEX[7:0]
+S AsADDRESS[7:0] INDEX[7:0] As P
+0x52 (write)
+S AsADDRESS[7:0] AmDATA[7:0] P
+0x53 (read)
+INDEX[15:8] As
+
+--- page 16 ---
+Control interface VL53L1
+16/39 DocID029631 Rev 12
+Figure 14. VL53L1 data format (sequential read)
+3.1 I 2C interface - timing characteristics
+Timing characteristics are shown in Table 6. Please refer to Figure 15 for an explanation of 
+the parameters used. 
+Timings are given for all PVT conditions.
+          
+S AsADDRESS[7:0] AmDATA[7:0]
+P
+0x53 (read)
+AmDATA[7:0]
+AmDATA[7:0] AmDATA[7:0] AmDATA[7:0]
+S AsADDRESS[7:0] INDEX[7:0] As P
+0x52 (write)
+INDEX[15:8] As
+Table 5.  I2C interface - timing characteristics for Fast mode plus (1 MHz)
+Symbol Parameter Minimum Typical Maximum Unit
+FI2C Operating frequency 0 - 1000 kHz
+tLOW Clock pulse width low 0.5 - -
+s
+tHIGH Clock pulse width high 0.26 - -
+tSP
+Pulse width of spikes which are 
+suppressed by the input filter -- 5 0 n s
+tBUF Bus free time between transmissions 0.5 - - µs
+tHD.STA Start hold time 0.26 - -
+stSU.STA Start set-up time 0.26 - -
+tHD.DAT Data in hold time 0 - 0.9
+tSU.DAT Data in set-up time 50 - -
+nstR SCL/SDA rise time - - 120
+tF SCL/SDA fall time - - 120
+tSU.STO Stop set-up time 0.26 - - s
+Ci/o Input/output capacitance (SDA) - - 10
+pFCin Input capacitance (SCL) - - 4
+CL Load capacitance - 140 550
+--- page 17 ---
+DocID029631 Rev 12 17/39
+VL53L1 Control interface
+39
+          
+Figure 15. I2C timing characteristics
+All timings are measured from either VIL or VIH.
+Table 6.  I2C interface - timing characteristics for Fast mode (400 kHz)
+Symbol Parameter Minimum Typical Maximum Unit
+FI2C Operating frequency 0 - 400 kHz
+tLOW Clock pulse width low 1.3 - -
+s
+tHIGH Clock pulse width high 0.6 - -
+tSP
+Pulse width of spikes which are suppressed 
+by the input filter -- 5 0 n s
+tBUF Bus free time between transmissions 1.3 - - µs
+tHD.STA Start hold time 0.26 - -
+stSU.STA Start set-up time 0.26 - -
+tHD.DAT Data in hold time 0 - 0.9
+tSU.DAT Data in set-up time 50 - -
+nstR SCL/SDA rise time - - 300
+tF SCL/SDA fall time - - 300
+tSU.STO Stop set-up time 0.6 - - s
+Ci/o Input/output capacitance (SDA) - - 10
+pFCin Input capacitance (SCL) - - 4
+CL Load capacitance - 125 400
+SDA
+SCL
+tHD.STA
+tR
+tHIGH
+tF
+tSU.DATtHD.DAT tSU.STA tSU.STO
+...
+...
+tHD.STAtLOWtBUF
+stopstartstop start
+VIH
+VIL
+VIH
+VIL
+--- page 18 ---
+Control interface VL53L1
+18/39 DocID029631 Rev 12
+3.2 I 2C interface - reference registers
+The registers shown in the table below can be used to validate the user I2C interface.
+          
+Note: The I2C read/writes can be 8,16 or 32-bit. Multi-byte reads/writes are always addressed in 
+ascending order with MSB first as shown in Table 8.
+The customer must use the VL53L1 software driver for easy and efficient ranging operations 
+to match performance and accuracy criteria. Hence full register details are not exposed. The 
+customer should refer to the VL53L1 user manual (UM2133).
+Table 7. Reference registers
+Register name Index After fresh reset, without 
+driver loaded
+Model_ID 0x010F 0xEA
+Module_Type 0x0110 0xCC
+Table 8. 32-bit register example
+Register address Byte
+Address MSB
+Address + 1 ..
+Address + 2 ..
+Address + 3 LSB
+--- page 19 ---
+DocID029631 Rev 12 19/39
+VL53L1 Electrical characteristics
+39
+4 Electrical characteristics
+4.1 Absolute maximum ratings
+          
+Note: Stresses above those listed in Table 9. may cause permanent damage to the device. This is 
+a stress rating only and functional operation of the device at these or any other conditions 
+above those indicated in the operational sections of the specification is not implied. 
+Exposure to absolute maximum rating conditions for extended periods may affect device 
+reliability.
+4.2 Recommended operating conditions
+          
+4.3 ESD
+The VL53L1 is compliant with ESD values presented in Table 11 
+          
+Table 9. Absolute maximum ratings
+Parameter Min. Typ. Max. Unit
+AVDD -0.5 - 3.6
+V
+SCL, SDA, XSHUT and GPIO1 -0.5 - 3.6
+Table 10. Recommended operating conditions (1)
+1. There are no power supply sequencing requirements. The I/Os m ay be high, low or floating when AVDD is 
+applied. The I/Os are internally failsafe with no diode connecting them to AVDD
+Parameter Min. Typ. Max. Unit
+Voltage (AVDD) 2.6 2.8 3.5
+V
+IO (IOVDD) (2)
+2. XSHUT should be high level only when AVDD is on.
+Standard mode 1.6 1.8 1.9
+2V8 mode (3) (4)
+3. SDA, SCL, XSHUT and GPIO1 high levels have to be equal to AVD D in 2V8 mode.
+4. The default Driver mode is 1V8. 
+2V8 mode is programmable using device settings loaded by the driver. For more details please refer to the 
+VL53L1 driver user manual (UM2133).
+2.6 2.8 3.5
+Ambient temperature (normal operating) -20 +85 °C
+Table 11. ESD performances
+Parameter Specification Conditions
+Human body model JS-001-2012 ± 2 kV, 1500 Ohms, 100 pF
+Charged device model J ZSD22-C101 ± 500 V
+--- page 20 ---
+Electrical characteristics VL53L1
+20/39 DocID029631 Rev 12
+4.4 Current consumption
+          
+Table 12. Power consumption at ambient temperature (1)
+Parameter Min. Typ. Max. Unit
+HW STANDBY 3 5 7
+uASW STANDBY (2V8 mode) (2) 469
+Timed ranging Inter measurement 20
+Active Ranging average consumption (including 
+VCSEL) (3) (4) 16 18 mA
+Average power consumption at 10 Hz 
+with 33 ms ranging sequence 20 mW
+1. All current consumption values  include silicon process variations. Temperature and voltage are nominal 
+conditions (23°C and 2v8). 
+All values include AVDD and AVDDVCSEL.
+2. In standard mode (1v8), pull-ups have to be modified, then SW  STANDBY consumption is increased by 
++0.6 µA.
+3. Active ranging is an average value, measured using default dr iver settings. Ranging mode with default 
+settings @ 16 ms timing budget.
+4. Peak current (includi ng VCSEL) can reach 40mA. 
+--- page 21 ---
+DocID029631 Rev 12 21/39
+VL53L1 Electrical characteristics
+39
+4.5 Electrical c haracteristics
+          
+Table 13. Digital I/O electrical characteristics
+Symbol Parameter Min. Typ. Max. Unit
+Interrupt pin (GPIO1)
+VIL Low level input voltage -
+-
+0.3 IOVDD
+V
+VIH High level input voltage 0.7 IOVDD -
+VOL
+Low level output voltage 
+(IOUT = 4 mA) -0 . 4
+VOH
+High level output voltage
+(IOUT = 4 mA) IOVDD-0.4 -
+FGPIO
+Operating frequency 
+(CLOAD = 20 pF) 0 108 MHz
+I2C interface (SDA/SCL)
+VIL Low level input voltage -0.5
+-
+0.6
+VVIH High level input voltage 1.12 IOVDD+0.5
+VOL
+Low level output voltage 
+(IOUT = 4 mA) -0 . 4
+IIL/IH
+Leakage current (1) -1 0
+µA
+Leakage current (2) - 0.15
+1. AVDD = 0 V
+2. AVDD = 2.85 V; I/O voltage = 1.8 V
+--- page 22 ---
+Ranging performances VL53L1
+22/39 DocID029631 Rev 12
+5 Ranging performances
+5.1 Measurement conditions
+In all measurement tables of the document, it is considered that:
+1. The full field of view (FoV) is covered (typically 27°) or a partial FoV is covered after a 
+specific ROI definition by the user (array size from 4x4 SPADs to 16x16 SPADs).
+2. Charts used as targets are: gre y (17% reflectance, N4.74 Munsell) and white (88% 
+reflectance N9.5 Munsell).
+3. Nominal voltage (2.8 V) and temperature (23°C).
+4. Unless mentioned, the device is controlled through the drive r using the default settings 
+(refer to the user manual for driver settings description). 
+5. Detection rate is considered as 94%.
+6. Indoor (no IR) means there is no contribution of light in th e band 940 nm ± 30 nm. 
+Outdoor overcast conditions means an illumination level of 0.7 W/m² back on the 
+sensor, in the band 940 nm ± 30 nm.
+7. No coverglass is present
+8. A gain correction is available in the driver. The performanc e assumes average gain 
+correction has been applied
+5.2 Minimum ranging distance
+The minimum ranging distance guaranteed is 4 cm. This is valid for all modes (ranging, 
+scanning, lite, and autonomous)
+5.3 Ranging and Scanning m odes: multi object detection
+Thanks to direct time of flight principle and ST patents, the VL53L1 is able to detect up to 
+4 objects in the FoV.
+The typical depth separation between objects has to be at least 80 cm.
+5.4 Ranging and Scanning m odes: full FoV performance
+With default software driver settings, performances with full field of view (grey and white 
+targets) with 16 ms timing budget are provided in Table 14.
+--- page 23 ---
+DocID029631 Rev 12 23/39
+VL53L1 Ranging performances
+39
+          
+Note: It is assumed that offs et calibration is performed.
+Table 14. Performances with Full FoV at 60Hz
+Applicable to:
+Ranging and Scanning modes
+Dark or indoor
+(no infrared)
+Outdoor 
+overcast
+Target
+color
+Performances
+full FoV Min. Typ. Max Min. Typ. Max
+White
+target
+Max. distance detection 320 cm 320 cm - 70 cm 90 cm 
+Accuracy - - 1% - - 8.5%
+Ranging offset - - ± 25mm - ± 25 mm
+Grey 
+target
+Max distance 180 cm 230 cm - 70 cm 90 cm -
+Accuracy - - 2.5% - - 8.5%
+Ranging offset - ± 25mm - - ± 25 mm
+--- page 24 ---
+Ranging performances VL53L1
+24/39 DocID029631 Rev 12
+5.5 Ranging and Scanning mod es: partial FoV performances
+5.5.1 Optical center definition
+Sensing array optical center specification takes into account the part-to-part variation in 
+production. 
+Optical center is defined by (Xo, Yo) coordinates.
+Optical center is measured for each part during a factory test at STMicroelectronics. The 
+coordinates are stored in the VL53L1 non-volatile memory and are readable by customer 
+through software driver in the application. This helps optimizing its design, alignment with 
+camera and ranging performances in the application. 
+The green array in Figure 16: Optical center specification gives the possible location of the 
+optical center.
+The user can define its own priority:
+ Priority FoV: full matrix 16x16 active, max. ranging distance on corners maybe smaller 
+than in the center. 
+ Priority distance: cropped matrix around the optical center. Refer to Table 16: 
+Ranging and Scanning modes: performance with partial FoV to get the target 
+performances in this case.
+          
+Figure 16. Optical center specification
+Table 15. Optical center specification
+Parameter Min. Typ. Max. Unit
+Xo offset -2 0 2
+SPAD
+Yo offset -2 0 2
+
+ 
+
+--- page 25 ---
+DocID029631 Rev 12 25/39
+VL53L1 Ranging performances
+39
+5.5.2 Partial FoV performances
+With default software driver settings, performances with partial FoV (grey and white targets) 
+with 16 ms timing budget per zone are provided in Table 16.
+          
+Note: It is assumed that per ROI offset calibration is performed.
+Note: The performance table is specified after opti cal centering of the VL53L1 defined in the user 
+manual. The optical center of the VL53L1 is stored in the VL53L1 NVM and can be read by 
+the user through the software driver.
+Table 16. Ranging and Scanning modes: performance with partial FoV
+Applicable to:
+Ranging and Scanning modes 8x8 SPADs ROI array 4x4 SPADs ROI array
+ROI In corner Centered In corner Centered
+Target
+color
+ROI 
+center
+location
+4 SPADs max. 
+from optical 
+center
+ROI center 
+= 
+optical center
+6 SPADs max 
+from optical 
+center
+ROI center 
+=
+optical center
+White
+Target
+Max distance 
+detection
+Typ. = 250 cm
+Min. = 190 cm
+Typ. = 250 cm
+Min. = 250 cm
+Typ. = 110cm
+Min. = 50cm
+Typ. = 170 cm
+Min. =150 cm
+Accuracy 2% 2% 3% 3%
+Ranging offset ± 25 mm ± 25 mm ± 25 mm ± 25 mm
+Grey 
+Target
+Max distance 
+detection
+Typ. =125 cm
+Min. = 70 cm
+Typ. = 155 cm
+Min. = 100 cm
+Typ. = 50 cm
+Min. = 20 cm
+Typ. = 90 cm
+Min. = 50 cm
+Accuracy 5% 5% 10% 10%
+Ranging offset ± 25 mm ± 25 mm ± 25 mm ± 25 mm
+--- page 26 ---
+Ranging performances VL53L1
+26/39 DocID029631 Rev 12
+5.6 Lite mode performances
+Performances for Lite mode, as defined in the software driver, are provided in Table 17.
+5.7 Autonomous mode performances
+Performances for Autonomous mode, as defined in the software driver, are provided in Table 18.
+The accuracy of the ranging thresholds programmed by user in autonomous mode are compliant with the 
+values described in Table 18. 
+Table 17. Lite mode: performances with full FoV
+Applicable to:
+Lite mode with default settings
+Dark or indoor
+(no infrared)
+Target color Performance
+15 Hz (default, recommended)
+Min. Typ. Max.
+White target
+Max. distance detection 330 410 cm -
+Accuracy - - 2.5%
+Ranging offset - - ± 25 mm
+Grey target
+Max distance detection 130 cm 170 cm -
+Accuracy - - 2.5%
+Ranging offset - - ± 25 mm
+Table 18. Autonomous mode: performances with full FoV
+Applicable to:
+Autonomous mode with default settings
+Dark or indoor
+(no infrared)
+Target color Performance
+76 ms timing budget
+Min Typ. Max
+White target
+Max distance detection
+-
+280 cm -
+Accuracy - 1.5%
+Ranging offset - ± 25 mm
+Grey target
+Max distance detection 160 cm -
+Accuracy - 2.5%
+Ranging offset - ± 25 mm
+--- page 27 ---
+DocID029631 Rev 12 27/39
+VL53L1 Outline drawing
+39
+6 Outline drawing
+Figure 17. Outline drawing (page 1/3)
+
+
+
+5
+LQSRV
+
+
+571/HQVGLDPHWHU
+EHQHDWKILOWHUJODVV
+
+(07$SHUWXUH
+EHQHDWKILOWHUJODVV
+
+ 
+
+
+
+
+LQSRV
+
+
+
+
+
+
+
+
+
+
+
+
+'LDPHWULF9LHZ
+6FDOH1RGUDIWRQWUDSH]RLG
+VKDSHGHQGVVHH
+QRWH
+
+
+
+
+1RWHV
+'LPHQVLRQVPDUNHG DUHLQVSHFWLRQGLPHQVLRQVFKHFNHGDW24&
+8QVSHFLILHGUDGLL
+'(*GUDIWRQH[WHUQDOVLGHVLGHZDOOVRIPRGXOHXQOHVVVWDWHG'LPHQVLRQVJLYHQRQHGJHRI
+SODVWLFFDSDUHGDWXPHGWREDVHFDSVXUIDFH
+3DJHVKRZVH[FOXVLRQFRQHVWREHNHSWIUHHRIPHFKDQLFDOLWHPVZKLFKZLOOLQWHUIHUHZLWK
+PRGXOHRSHUDWLRQ7KH\DUHQRWV\VWHPSHUIRUPDQFHFRQHV
+0HWDOFRQQHFWLRQSDGVDUHHOHFWURO\WLFSODWHG7+.*ROGRYHU7+.1LFNHO
+5(9,6,216
+5(9 '(6&5,37,21 '$7(
+ ,1,7,$/5(/($6( 
+&RQQHFWLRQ7DEOH
+ $9''9&6(/
+ $9669&6(/
+ *1'
+ *1'
+ ;6+87
+ *1'
+ *3,2
+ '1&
+ 6'$
+ 6&/
+ $9''
+ *1'
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+2)
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+/LQHDU
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+$QJXODUGHJUHHV
+'LDPHWHU 
+3RVLWLRQ 
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+,QWHUSUHWGUDZLQJSHU%6
+5'$QJOH3URMHFWLRQ
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)6KHHW
+      
+   
+7LWOH
+0DWHULDO
+)LQLVK
+7ROHUDQFHVXQOHVVRWKHUZLVHVWDWHG
+'UDZQ
+'DWH
+'UDZLQJ1R
+$OOGLPHQVLRQVLQPP 6FDOH
+670LFURHOHFWURQLFV
+,PDJLQJ'LYLVLRQ
+7KLVGUDZLQJDQGWKHLQIRUPDWLRQZLWKLQWKLVGRFXPHQWDUHWUKHSURSHUW\RI
+670LFURHOHFWURQLFVDQGDUH670LFURHOHFWURQLFV&21),'(17,$/,1)250$7,21
+670LFURHOHFWURQLFVUHVHUYHVDOOULJKWVDWWDFKLQJWRWKHGUDZLQJDQGWKH
+LQIRUPDWLRQ,WPXVWQRWEHFRSLHGWUDQVPLWWHGPDGHSXEOLFRUXVHGLQDQ\
+PDQQHURWKHUWKDQZKLFK670LFURHOHFWURQLFVKDVJLYHQSULRUZULWWHQSHUPLVVLRQ
+
+
+-RVHSK+DQQDQ
+
+'0
+9//0RGXOH2XWOLQH
+
+&21752//(''2&80(17 3$*(
+
+&RS\ULJKW670LFURHOHFWURQLFV  8QDXWKRUL]HGUHSURGXFWLRQDQGFRPPXQLFDWLRQVWULFWO\SURKLELWHG
+
+127,&(7KLVGRFXPHQWPD\KDYHEHHQUHYLVHGVLQFHLWZDVSULQWHG&KHFN'RFXPHQW0DQDJHPHQW6\ VWHPIRUODWHVWYHUVLRQEHIRUHXVLQJRUFRS\LQJ
+ 
+
+{pN_1}1.0 14-Dec-2016
+ST Restricted
+DM00319387 ACTIVE 1/3
+--- page 28 ---
+Outline drawing VL53L1
+28/39 DocID029631 Rev 12
+Figure 18. Outline drawing (page 2/3)
+ 
+
+
+
+
+
+
+
+
+3&%3DG/D\RXW
+ORRNLQJWKURXJKWRSRIPRGXOH
+
+'((3
+LQSRV
+
+'((3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*DWHUHOLHI'((3
+LQSRV
+'((3
+
+DWGDWXP$
+
+DWGDWXP$
+
+
+
+
+571.((3287&RQH
+(07.((3287&RQH
+$
+
+
+
+
+5HY 'DWH
+ 
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+2)
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+/LQHDU
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+$QJXODUGHJUHHV
+'LDPHWHU 
+3RVLWLRQ 
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+,QWHUSUHWGUDZLQJSHU%6
+5'$QJOH3URMHFWLRQ
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)6KHHW
+      
+   
+7LWOH
+0DWHULDO
+)LQLVK
+7ROHUDQFHVXQOHVVRWKHUZLVHVWDWHG
+'UDZQ
+'DWH
+'UDZLQJ1R
+$OOGLPHQVLRQVLQPP 6FDOH
+670LFURHOHFWURQLFV
+,PDJLQJ'LYLVLRQ
+7KLVGUDZLQJDQGWKHLQIRUPDWLRQZLWKLQWKLVGRFXPHQWDUHWUKHSURSHUW\RI
+670LFURHOHFWURQLFVDQGDUH670LFURHOHFWURQLFV&21),'(17,$/,1)250$7,21
+670LFURHOHFWURQLFVUHVHUYHVDOOULJKWVDWWDFKLQJWRWKHGUDZLQJDQGWKH
+LQIRUPDWLRQ,WPXVWQRWEHFRSLHGWUDQVPLWWHGPDGHSXEOLFRUXVHGLQDQ\
+PDQQHURWKHUWKDQZKLFK670LFURHOHFWURQLFVKDVJLYHQSULRUZULWWHQSHUPLVVLRQ
+
+
+-RVHSK+DQQDQ
+
+'0
+9//0RGXOH2XWOLQH
+
+&21752//(''2&80(17 3$*(
+
+&RS\ULJKW670LFURHOHFWURQLFV  8QDXWKRUL]HGUHSURGXFWLRQDQGFRPPXQLFDWLRQVWULFWO\SURKLELWHG
+
+127,&(7KLVGRFXPHQWPD\KDYHEHHQUHYLVHGVLQFHLWZDVSULQWHG&KHFN'RFXPHQW0DQDJHPHQW6\ VWHPIRUODWHVWYHUVLRQEHIRUHXVLQJRUFRS\LQJ
+ 
+
+{pN_1}1.0 14-Dec-2016
+ST Restricted
+DM00319387 ACTIVE 2/3
+--- page 29 ---
+DocID029631 Rev 12 29/39
+VL53L1 Outline drawing
+39
+Figure 19. Outline drawing (page 3/3
+
+
+
+
+
+
+5HY 'DWH
+ 
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+2)
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+/LQHDU
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+3ODFH'HFLPDOV
+$QJXODUGHJUHHV
+'LDPHWHU 
+3RVLWLRQ 
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)
+     
+   
+,QWHUSUHWGUDZLQJSHU%6
+5'$QJOH3URMHFWLRQ
+$
+%
+&
+'
+(
+)
+$
+%
+&
+'
+(
+)6KHHW
+      
+   
+7LWOH
+0DWHULDO
+)LQLVK
+7 ROHUDQFHVXQOHVVRWKHUZLVHVWDWHG
+'UDZQ
+'DWH
+'UDZLQJ1R
+$OOGLPHQVLRQVLQPP 6FDOH
+670LFURHOHFWURQLFV
+,PDJLQJ'LYLVLRQ
+7KLVGUDZLQJDQGWKHLQIRUPDWLRQZLWKLQWKLVGRFXPHQWDUHWUKHSURSHUW\RI
+670LFURHOHFWURQLFVDQGDUH670LFURHOHFWURQLFV&21),'(17,$/,1)250$7,21
+670LFURHOHFWURQLFVUHVHUYHVDOOULJKWVDWWDFKLQJWRWKHGUDZLQJDQGWKH
+LQIRUPDWLRQ,WPXVWQRWEHFRSLHGWUDQVPLWWHGPDGHSXEOLFRUXVHGLQDQ\
+PDQQHURWKHUWKDQZKLFK670LFURHOHFWURQLFVKDVJLYHQSULRUZULWWHQSHUPLVVLRQ
+
+
+-RVHSK+DQQDQ
+
+'0 9//0RGXOH2XWOLQH
+
+--- page 30 ---
+Laser safety considerations VL53L1
+30/39 DocID029631 Rev 12
+7 Laser safety considerations
+The VL53L1 contains a laser emitter and corresponding drive circuitry. The laser output is 
+designed to remain within Class 1 laser safety limits under all reasonably foreseeable 
+conditions including single faults in compliance with IEC 60825-1:2014 (third edition). 
+The laser output remains within Class 1 limits as long as STMicroelectronic’s recommended 
+device settings are used and the operating conditions specified are respected (particularly 
+the maximum timing budget, as described in the user manual UM2133).
+The laser output power must not be increased by any means and no optics should be used 
+with the intention of focusing the laser beam.
+Caution: Use of controls or adjustments o r performance of procedures oth er than those specified 
+herein may result in hazardous radiation exposure.
+Figure 20. Class 1 laser product label
+
+--- page 31 ---
+DocID029631 Rev 12 31/39
+VL53L1 Packaging and labeling
+39
+8 Packaging and labeling
+8.1 Product marking
+A 2-line product marking is applied on the backside of the module (i.e. on the substrate). 
+The first line is the silicon product code, and the second line, the internal tracking code.
+Figure 21. Example of prototype marking
+8.2 Inner box labeling
+The labeling follows the ST standard packing acceptance specification.
+The following information will be on the inner box label:
+ Assembly site
+ Sales type
+ Quantity
+ Trace code
+ Marking
+ Bulk ID number
+8.3 Packing
+At customer/subcontractor level, it is recommended to mount the VL53L1 in a clean 
+environment to avoid foreign material deposition. 
+To help avoid any foreign material contamination at phone assembly level the modules will 
+be shipped in a tape and reel format with a protective liner, starting from production version 
+(cut1.1). 
+The packaging will be vacuum-sealed and include a desiccant.
+The liner is compliant with reflow at 260°C. It must be removed during assembly of the 
+customer device, just before mounting the cover glass.
+
+--- page 32 ---
+Packaging and labeling VL53L1
+32/39 DocID029631 Rev 12
+8.4 Tape outline drawing
+Figure 22. Tape outline drawing 
+
+--- page 33 ---
+DocID029631 Rev 12 33/39
+VL53L1 Packaging and labeling
+39
+8.5 Pb-free solder reflow process
+Figure 23 and Table   shows the recommended and maximum values for the solder profile.
+Customers have to tune the reflow profile depending on the PCB, solder paste and material 
+used. We expect customers to follow the “recommended” reflow profile, which is specifically 
+tuned for VL53L1 package.
+For any reason, if a customer must perform a reflow profile which is different from the 
+“recommended” one (especially peak >240 °C), this new profile must be qualified by the 
+customer at their own risk. In any case, the profile have to be within the “maximum” profile 
+limit described in Table 19.
+          
+Figure 23. Solder profile
+Note: Temperature mentioned in Table 19 is measured at the top of the VL53L1 package.
+Note: The component should be limited to a maximu m of three passes through this solder profile.
+Note: As the VL53L1 package is not sealed, only a dry reflow process should be used (such as 
+convection reflow). Vapor phase reflow is not suitable for the VL53L1 because it is an optical 
+component. Consequently, the VL53L1 should be treated carefully. This would typically 
+include using a ‘no-wash’ assembly process.
+Table 19. Recommended solder profile
+Parameters Recommended Maximum Units
+Minimum temperature (TS min)
+Maximum temperature (TS max)
+Time ts (TS min to TS max)
+130
+200
+90-110
+150
+200
+60 - 120
+°C
+°C
+s
+Temperature (TL)
+Time (tL)
+Ramp up
+217
+55-65
+2
+217
+55 - 65
+3
+°C
+s
+°C/s
+Temperature (Tp-10)
+Time (tp-10)
+Ramp up
+-
+-
+-
+235
+10
+3
+°C
+s
+°C/s
+Peak temperature (Tp) 240 245 °C
+Time to peak 300 300 s
+Ramp down (peak to TL)- 4 - 6 ° C / s
+
+--- page 34 ---
+Packaging and labeling VL53L1
+34/39 DocID029631 Rev 12
+8.6 Handling and storage precautions
+8.6.1 Shock precaution
+Sensor modules house numerous internal components that are susceptible to shock 
+damage. If a unit is subject to excessive shock, is dropped on the floor, or a tray/reel of units 
+is dropped on the floor, it must be rejected, even if no apparent damage is visible.
+8.6.2 Part handling
+Handling must be done with non-marring ESD safe carbon, plastic, or teflon tweezers. 
+Ranging modules are susceptible to damage or contamination. The customer is advised to 
+use a clean assembly process after removing the tape from the parts, and until a protective 
+cover glass is mounted.
+8.6.3 Compression force
+A maximum compressive load of 25 N should be applied on the module.
+8.6.4 Moisture sensitivity level
+Moisture sensitivity is level 3 (MSL) as described in IPC/JEDEC JSTD-020-C
+8.7 Storage temper ature conditions
+          
+Table 20. Recommended storage conditions
+Parameter Min. Typ. Max. Unit
+Temperature (storage) -40 23 125 °C
+--- page 35 ---
+DocID029631 Rev 12 35/39
+VL53L1 Ordering information
+39
+9 Ordering information
+          
+10 Acronyms and abbreviations
+          
+Table 21. Order codes
+Sales type Package Packing Minimum order 
+quantity
+VL53L1CBV0FY/1 Optical LGA12 with liner Tape and reel 3600pcs
+Table 22. Acronyms and abbreviations
+Acronym/abbreviation Definition
+ESD Electrostatic discharge
+I2C Inter-integrated circuit (serial bus)
+NVM Non volatile memory
+SPAD Single photon avalanche diode
+FoV Field of view
+VCSEL Vertical cavity su rface emitting laser
+--- page 36 ---
+ECOPACK VL53L1
+36/39 DocID029631 Rev 12
+11 ECOPACK
+In order to meet environmental requirements, ST offers these devices in different grades of 
+ECOPACK packages, depending on their level of environmental compliance. ECOPACK 
+specifications, grade definitions and product status are available at: www.st.com. 
+ECOPACK is an ST trademark.
+Note: The ECOPACK grade for VL53L1 is ECOPACK2.
+--- page 37 ---
+DocID029631 Rev 12 37/39
+VL53L1 Revision history
+39
+12 Revision history
+          
+Table 23. Document revision history
+Date Revision Changes
+14 Apr 2017 1 Initial release
+28-Apr-2017 2
+Document status updated to “production data”.
+Added:
+Section 5.2: Minimum ranging distance
+Section 5.3: Ranging and Scanning modes: multi object 
+detection
+Section 8.4: Tape outline drawing
+Modified
+Section 2.8.1: Power-up and boot sequence: added a note on 
+XSHUT pin.
+09-Jun-2017 3
+Removed “preliminary” from Section 5: Ranging 
+performances.
+Updated: Table 16: Ranging and Scanning modes: 
+performance with partial FoV, Table 17: Lite mode: 
+performances with full FoV, and Table 18: Autonomous mode: 
+performances with full FoV.
+08-Dec-2017 4
+Updated Table 7: Reference registers
+Section 8.5: Pb-free solder reflow process: added note about 
+reflow process needed for the VL53L1.
+29-Nov-2018 5
+Replaced Figure 5: Firmware state machine
+Section 2.5: Description of operating “preset” modes: 
+removed some information about “timing budgets”.
+Table 5: updated units of tBUF parameter
+Table 6: updated units of tBUF parameter and updated 
+maximum values of tR and tR.
+Section 5.1: Measurement conditions: updated detection rate 
+from 100 % to 94 %.
+Section 5.4: Ranging and Scanning modes: full FoV 
+performance: small text change (of to and).
+Section 5.5.2: Partial FoV performances: small text change 
+(of to and), added “offset” to first note.
+Replaced Figure 19: Outline drawing (page 3/3
+Section 7: Laser safety considerations: updated text 
+concerning laser output limits in Class 1.
+20-Mar-2020 6 Document status no longer confidential
+15-Dec-2020 7 Updated metadata
+13-Apr-2021 8
+Fixed issues with Figure 2: VL53L1 pinout (bottom view), 
+Figure 3: VL53L1 schematic, and Figure 4: VL53L1 system 
+functional description
+14-Apr-2021 9 Updated metadata
+12-Oct-2021 10 Section 3: Control interface: replaced “camera module” with 
+“Time-of-Flight” sensor.
+--- page 38 ---
+Revision history VL53L1
+38/39 DocID029631 Rev 12
+14-Apr-2022 11 Updated Figure 22: Tape outline drawing
+27-Jun-2022 12 Updated Figure 13: VL53L1 data format (sequential write)
+Table 23. Document revision history
+Date Revision Changes
+--- page 39 ---
+DocID029631 Rev 12 39/39
+VL53L1
+39
+          
+IMPORTANT NOTICE – READ CAREFULLY
+STMicroelectronics NV and its subsidiaries (“ST”) reserve the right to make changes, corrections, enhancements, modifications, and 
+improvements to ST products and/or to this document at any time without notice. Purchasers should obtain the latest relevant information on 
+ST products before placing orders. ST products are sold pursuant to ST’s terms and conditions of sale in place at the time of order 
+acknowledgment.
+Purchasers are solely responsible for the choice, selection, and use of ST products and ST assumes no liability for application assistance or 
+the design of purchasers’ products.
+No license, express or implied, to any intellectual property right is granted by ST herein.
+Resale of ST products with provisions different from the information set forth herein shall void any warranty granted by ST for such product.
+ST and the ST logo are trademarks of ST. For additional information about ST trademarks, refer to www.st.com/trademarks. All other product 
+or service names are the property of their respective owners.
+Information in this document supersedes and replaces information previously supplied in any prior versions of this document.
+© 2022 STMicroelectronics – All rights reserved

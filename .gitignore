@@ -1,0 +1,75 @@
+# ==========================================================
+# STM32CubeMX + Keil MDK-ARM (uVision5) + VS Code 工程
+# 仅忽略"可再生成 / 与本机用户绑定"的文件，
+# Core/ User/ Drivers/ Middlewares/ 源码全部纳入版本管理。
+# ==========================================================
+
+# ---------- Keil MDK 编译输出 ----------
+# 编译输出目录（Objects/Listings 等，本工程为 MDK-ARM/Code_New/）
+MDK-ARM/*/
+# 若改为默认输出目录名
+Objects/
+Listings/
+
+# 中间文件与可执行文件（防止输出目录被手动改到别处时漏掉）
+*.o
+*.d
+*.crf
+*.dep
+*.lnp
+*.sct
+*.iex
+*.axf
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.htm
+*.build_log.htm
+
+# ---------- Keil 与本机用户绑定的文件 ----------
+# 窗口布局/工具栏等个人设置（每台机器、每个用户一份）
+*.uvguix.*
+*.uvoptx
+*.uvopt
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# ---------- Keil / 调试器生成的配置 ----------
+# CubeMX 生成，可由 .uvprojx 重建
+MDK-ARM/DebugConfig/
+# Keil 依据 .uvprojx 的 RTE 配置自动再生成（含 RTE_Components.h）
+MDK-ARM/RTE/
+EventRecorderStub.scvd
+JLinkLog.txt
+JLinkSettings.ini
+*.dbgconf
+
+# ---------- Keil Assistant / VS Code ----------
+MDK-ARM/.vscode/
+keil-assistant.log
+uv4.log
+uv4.log.lock
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+!.vscode/c_cpp_properties.json
+.cache/
+compile_commands.json
+
+# ---------- STM32CubeMX ----------
+# 工程内部缓存文件，由 .ioc 再生成（.ioc 本身要提交！）
+.mxproject
+
+# ---------- 杂项 ----------
+*.log
+*.swp
+*~
+desktop.ini
+Thumbs.db
+.DS_Store
