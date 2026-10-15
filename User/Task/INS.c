@@ -32,8 +32,8 @@ uint8_t ins_debug_mode = 0;
  *============================================================================*/
 #define INS_FILTER_FS_HZ       1000.0f   /* 滤波器采样率(标称=控制周期 1kHz)   */
 #define INS_GYRO_NOTCH_EN      1u        /* 1=陷波使能(主手段)                */
-#define INS_GYRO_NOTCH_F0      386.0f    /* 陷波中心频率(Hz) ★按实测改        */
-#define INS_GYRO_NOTCH_Q       1.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
+#define INS_GYRO_NOTCH_F0      420.0f    /* 陷波中心频率(Hz) ★按实测改        */
+#define INS_GYRO_NOTCH_Q       2.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
 #define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
 #define INS_GYRO_LP_FC         150.0f    /* 二阶低通截止频率(Hz)              */
 #define INS_GYRO_FILTER_EKF    1u        /* 1=EKF 也用滤波后角速度(默认原始)  */
@@ -64,7 +64,7 @@ void INS_Init(void)
     IMU_Param.Roll = 0;
     IMU_Param.flag = 1;
 
-    IMU_QuaternionEKF_Init(10, 0.002, 1000000, 1, 0);
+    IMU_QuaternionEKF_Init(10, 0.004, 1000000, 1, 0);
 
     INS.AccelLPF = 0.0085;
 
@@ -200,8 +200,8 @@ void INS_Task(void)
 
         // 获取最终数据
         INS.Yaw = QEKF_INS.Yaw;
-        INS.Pitch = -QEKF_INS.Roll;
-        INS.Roll = QEKF_INS.Pitch;
+        INS.Roll = QEKF_INS.Roll;
+        INS.Pitch = QEKF_INS.Pitch;
         INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
         INS.Last_Yaw = INS.Yaw;
 

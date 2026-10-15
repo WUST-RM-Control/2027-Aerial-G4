@@ -522,14 +522,14 @@
               <FilePath>..\User\Task\Control.c</FilePath>
             </File>
             <File>
-              <FileName>INS.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\Task\INS.c</FilePath>
-            </File>
-            <File>
               <FileName>Sensor.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\Task\Sensor.c</FilePath>
+            </File>
+            <File>
+              <FileName>INS.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\Task\INS.c</FilePath>
             </File>
           </Files>
         </Group>

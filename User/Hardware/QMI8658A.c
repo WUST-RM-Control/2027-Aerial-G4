@@ -51,14 +51,14 @@ uint8_t QMI8658A_Init_RegList[][2] =
 {   
     {QMI8658A_Reg_CTRL1     , 0x60}, // 开启SPI地址自动递增,MSB
     {QMI8658A_Reg_CTRL7     , 0x00}, // 关闭加速度计+陀螺仪+温度传感器
-    {QMI8658A_Reg_CTRL2     , 0x13}, // 加速度计：量程±4g(aFS=1)，输出数据率896.8Hz(aODR=3)
-    {QMI8658A_Reg_CTRL3     , 0x63}, // 陀螺仪：量程±1024dps(gFS=6)，输出数据率896.8Hz(gODR=3)
+    {QMI8658A_Reg_CTRL2     , 0x23}, // 加速度计：量程±8g(aFS=2)，输出数据率896.8Hz(aODR=3)
+    {QMI8658A_Reg_CTRL3     , 0x73}, // 陀螺仪：量程±2048dps(gFS=7)，输出数据率896.8Hz(gODR=3)
     // CTRL5 内置低通：bit0=加速度计LPF使能, bit[2:1]=加速度计档位, bit4=陀螺LPF使能, bit[6:5]=陀螺档位
     //   档位 = ODR的百分比(0=2.66% 1=3.63% 2=5.39% 3=13.37%)
     //   0x77 = 两路都开、档位3(13.37%) → 896.8Hz*13.37% ≈ 120Hz，延迟约1.9ms
     //          (原 0x33 是档位1 = 32.5Hz，延迟约5~7ms，滞后过大)
     //   其他：0x03=只开加速度计(陀螺无LPF)  0x30=只开陀螺  0x33=两路档位1  0x00=全关
-    {QMI8658A_Reg_CTRL5     , 0x07},
+    {QMI8658A_Reg_CTRL5     , 0x00},
     {QMI8658A_Reg_CTRL8     , 0x01}, // 开启温度传感器
     {QMI8658A_Reg_CTRL7     , 0x03}, // 开启加速度计+陀螺仪+温度传感器};
 };
@@ -90,12 +90,12 @@ void QMI8658A_Read_Data(void)
     
     QMI8658A_Read_RegList(QMI8658A_Reg_TEMP_L, 14, (uint8_t*)&RAW_Data);    
     
-    //根据量程解包
+    //根据量程解包 (CTRL2=±8g, CTRL3=±2048dps)
     QMI8658A.Temperature =  RAW_Data.Tempture / 256.0f;
-    QMI8658A.Accel[0] = 4.0f * GRAVITY * RAW_Data.AX / 32768.0f;
-    QMI8658A.Accel[1] = 4.0f * GRAVITY * RAW_Data.AY / 32768.0f;
-    QMI8658A.Accel[2] = 4.0f * GRAVITY * RAW_Data.AZ / 32768.0f;
-    QMI8658A.Gyro[0]  = 1024.0f * PI / 180.0f * RAW_Data.GX / 32768.0f;
-    QMI8658A.Gyro[1]  = 1024.0f * PI / 180.0f * RAW_Data.GY / 32768.0f;
-    QMI8658A.Gyro[2]  = 1024.0f * PI / 180.0f * RAW_Data.GZ / 32768.0f;
+    QMI8658A.Accel[0] = 8.0f * GRAVITY * RAW_Data.AX / 32768.0f;
+    QMI8658A.Accel[1] = 8.0f * GRAVITY * RAW_Data.AY / 32768.0f;
+    QMI8658A.Accel[2] = 8.0f * GRAVITY * RAW_Data.AZ / 32768.0f;
+    QMI8658A.Gyro[0]  = 2048.0f * PI / 180.0f * RAW_Data.GX / 32768.0f;
+    QMI8658A.Gyro[1]  = 2048.0f * PI / 180.0f * RAW_Data.GY / 32768.0f;
+    QMI8658A.Gyro[2]  = 2048.0f * PI / 180.0f * RAW_Data.GZ / 32768.0f;
 }

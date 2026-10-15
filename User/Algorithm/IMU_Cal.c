@@ -48,13 +48,13 @@ void IMU_Cal_Read_Raw(float acc[3], float gyr[3])
  * 从而跳过每次都要手动摆姿势的交互式 IMU_Cal() 校准。
  * 若以后改成 Flash 存储, 把 IMU_Cal_Load_Config() 改为读 Flash 即可。
  * ---------------------------------------------------------------- */
-static const float IMU_Cal_Fixed_Acc_Offset[3]  = { 0.146421954f,   -0.0265448615f,  -0.556215763f };  /* m/s^2 */
-static const float IMU_Cal_Fixed_Acc_Scale[3]   = { 0.997563839f,   1.00898647f,     0.993353784f  };  /* 比例 */
-static const float IMU_Cal_Fixed_Gyro_Offset[3] = {-0.1511550725f,   0.0575197153f,   0.0000745529833f }; /* rad/s */
+static const float IMU_Cal_Fixed_Acc_Offset[3]  = { 0.304593325f,    0.206411183f,   -0.485507458f };   /* m/s^2 */
+static const float IMU_Cal_Fixed_Acc_Scale[3]   = { 1.00063789f,     1.00721169f,     0.994780362f  };   /* 比例 */
+static const float IMU_Cal_Fixed_Gyro_Offset[3] = {-0.171457797f,    0.0722558275f,  -0.00584641751f }; /* rad/s */
 static const float IMU_Cal_Fixed_Frame_R[3][3]  = {
-    {-0.999772906f,  -0.0112785511f, -0.0180822648f},
-    { 0.0095297154f, -0.995522559f,   0.09404248f  },
-    {-0.0190619659f,  0.0938488021f,  0.995403945f },
+    {-0.0638484657f,  -0.997871995f,   0.0132223275f },
+    { 0.997933388f,   -0.0637451038f,  0.00809651893f},
+    {-0.00723643089f,  0.0137119517f,  0.999879777f  },
 };
 /* 加载固化(或将来从 Flash 读回)的校准参数到 IMU_Cal_Data.Config。
  * 返回 1 = 成功(已应用), 0 = 无可用参数。 */

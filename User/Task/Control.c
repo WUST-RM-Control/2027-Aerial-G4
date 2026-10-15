@@ -52,8 +52,8 @@
  *============================================================================*/
 
 /*--- 角度外环(角度 -> 期望角速度): 只用 P + 摇杆前馈 ---*/
-#define CONTROL_ANGLE_KP_RP          40.0f   /* 每 1° 误差给多少 °/s (Roll/Pitch)          */
-#define CONTROL_ANGLE_KP_YAW         20.0f   /* 每 1° 误差给多少 °/s (Yaw)                */
+#define CONTROL_ANGLE_KP_RP          20.0f   /* 每 1° 误差给多少 °/s (Roll/Pitch)          */
+#define CONTROL_ANGLE_KP_YAW         10.0f   /* 每 1° 误差给多少 °/s (Yaw)                */
 #define CONTROL_ANGLE_FF             0.0f   /* 摇杆前馈: 目标角度变化率 -> 期望角速度的比例
                                              * 0=不用前馈(全靠 P 追), 1=完全由摇杆速度决定;
                                              * 越大“打杆越跟手”, 推荐 0.3~1.0          */
@@ -80,10 +80,10 @@
  *   需要几到十几个推力单位的**常值差动**去顶, 而 P 只靠“率误差”产生,
  *   静态倾倒时率误差≈0 -> P 给不出东西; 这时全靠 I 慢慢积 -> KI 太小就永远顶不住。
  *   所以 KI 必须让 I 能在 1~3 秒内积到需要的工作点(I_MAX 同时给够上限)。 */
-#define CONTROL_RATE_KP              0.1f  /* 先单独调到“刚好不振荡”                  */
-#define CONTROL_RATE_KD             0.002f  /* 测速微分阻尼(已含一阶低通), 压 P 带来的过冲  */
+#define CONTROL_RATE_KP              0.07f  /* 先单独调到“刚好不振荡”                  */
+#define CONTROL_RATE_KD             0.008f  /* 测速微分阻尼(已含一阶低通), 压 P 带来的过冲  */
 #define CONTROL_RATE_KF             0.0f  /* 速率前馈(≈0.3×Kp): 减轻 I 负担、跟踪更准   */
-#define CONTROL_RATE_KI             0.01f  /* 抗扰/配平主力(CG 偏/电机不均/风); 太小→地面顶不住  */
+#define CONTROL_RATE_KI             0.000f  /* 抗扰/配平主力(CG 偏/电机不均/风); 太小→地面顶不住  */
 #define CONTROL_RATE_I_MAX          10.0f  /* I 项限幅(推力域), 防长时间累积            */
 #define CONTROL_RATE_OUT_MAX        40.0f  /* 内环输出限幅(推力域)                    */
 #define CONTROL_RATE_D_LPF_HZ       50.0f  /* D 项低通截止频率(Hz), 越低越钝但越抗噪     */
@@ -258,12 +258,12 @@ void Control_Task(void *argument)
     PID_Init(&Control.PID_P_Yaw,   CONTROL_ANGLE_KP_YAW, 0, 0, 0, 0, CONTROL_RATE_SP_MAX);
 
     /*===| 角速度内环(角速度 -> 推力差动): P + I + D(测量微分) + 速率前馈 |===*/
-    PID_Init(&Control.PID_S_Roll,  CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
-    PID_Init(&Control.PID_S_Pitch, CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
-    PID_Init(&Control.PID_S_Yaw,   CONTROL_RATE_KP_YAW, CONTROL_RATE_KI_YAW, CONTROL_RATE_KD_YAW, CONTROL_RATE_KF_YAW, CONTROL_YAW_I_MAX,   CONTROL_RATE_OUT_MAX);
-    PID_Set_D_LPF(&Control.PID_S_Roll,  CONTROL_RATE_D_LPF_HZ);
-    PID_Set_D_LPF(&Control.PID_S_Pitch, CONTROL_RATE_D_LPF_HZ);
-    PID_Set_D_LPF(&Control.PID_S_Yaw,   CONTROL_RATE_D_LPF_HZ);
+//    PID_Init(&Control.PID_S_Roll,  CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
+//    PID_Init(&Control.PID_S_Pitch, CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
+//    PID_Init(&Control.PID_S_Yaw,   CONTROL_RATE_KP_YAW, CONTROL_RATE_KI_YAW, CONTROL_RATE_KD_YAW, CONTROL_RATE_KF_YAW, CONTROL_YAW_I_MAX,   CONTROL_RATE_OUT_MAX);
+//    PID_Set_D_LPF(&Control.PID_S_Roll,  CONTROL_RATE_D_LPF_HZ);
+//    PID_Set_D_LPF(&Control.PID_S_Pitch, CONTROL_RATE_D_LPF_HZ);
+//    PID_Set_D_LPF(&Control.PID_S_Yaw,   CONTROL_RATE_D_LPF_HZ);
 
     /*===| 定点模式(速度 -> 姿态角) |===*/
     PID_Init(&Control.PID_S_X, CONTROL_VEL_KP, CONTROL_VEL_KI, 0, 0, CONTROL_VEL_I_MAX, CONTROL_VEL_OUT_MAX);
@@ -556,9 +556,9 @@ void Control_Task(void *argument)
          *   T_Yaw   > 0 -> 顺时针(CW)桨加速 -> 机身反扭逆时针 -> 左偏航
          * 规律: 俯仰 前+ 后-, 横滚 左+ 右-, 偏航 CW+ CCW- */
         diff[0] =  Control.T_Roll  + Control.T_Yaw;      /* 1号 左臂 CW  */
-        diff[1] = -Control.T_Pitch - Control.T_Yaw;      /* 2号 后臂 CCW */
+        diff[1] = Control.T_Pitch - Control.T_Yaw;      /* 2号 后臂 CCW */
         diff[2] = -Control.T_Roll  + Control.T_Yaw;      /* 3号 右臂 CW  */
-        diff[3] =  Control.T_Pitch - Control.T_Yaw;      /* 4号 前臂 CCW */
+        diff[3] =  -Control.T_Pitch - Control.T_Yaw;      /* 4号 前臂 CCW */
 
         dmax = diff[0]; dmin = diff[0];
         for (uint8_t i = 1; i < 4; i++)
