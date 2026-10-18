@@ -80,7 +80,7 @@
  *   需要几到十几个推力单位的**常值差动**去顶, 而 P 只靠“率误差”产生,
  *   静态倾倒时率误差≈0 -> P 给不出东西; 这时全靠 I 慢慢积 -> KI 太小就永远顶不住。
  *   所以 KI 必须让 I 能在 1~3 秒内积到需要的工作点(I_MAX 同时给够上限)。 */
-#define CONTROL_RATE_KP              0.07f  /* 先单独调到“刚好不振荡”                  */
+#define CONTROL_RATE_KP              0.15  /* 先单独调到“刚好不振荡”                  */
 #define CONTROL_RATE_KD             0.008f  /* 测速微分阻尼(已含一阶低通), 压 P 带来的过冲  */
 #define CONTROL_RATE_KF             0.0f  /* 速率前馈(≈0.3×Kp): 减轻 I 负担、跟踪更准   */
 #define CONTROL_RATE_KI             0.000f  /* 抗扰/配平主力(CG 偏/电机不均/风); 太小→地面顶不住  */
@@ -88,7 +88,7 @@
 #define CONTROL_RATE_OUT_MAX        40.0f  /* 内环输出限幅(推力域)                    */
 #define CONTROL_RATE_D_LPF_HZ       50.0f  /* D 项低通截止频率(Hz), 越低越钝但越抗噪     */
 
-#define CONTROL_RATE_KP_YAW         0.15f  /* 偏航也要真控制: 太小则推油门时反作用力矩直接带着机身转 */
+#define CONTROL_RATE_KP_YAW         0.12f  /* 偏航也要真控制: 太小则推油门时反作用力矩直接带着机身转 */
 #define CONTROL_RATE_KD_YAW         0.001f
 #define CONTROL_RATE_KF_YAW         0.0f
 #define CONTROL_RATE_KI_YAW         0.0f
@@ -258,12 +258,12 @@ void Control_Task(void *argument)
     PID_Init(&Control.PID_P_Yaw,   CONTROL_ANGLE_KP_YAW, 0, 0, 0, 0, CONTROL_RATE_SP_MAX);
 
     /*===| 角速度内环(角速度 -> 推力差动): P + I + D(测量微分) + 速率前馈 |===*/
-//    PID_Init(&Control.PID_S_Roll,  CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
-//    PID_Init(&Control.PID_S_Pitch, CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
-//    PID_Init(&Control.PID_S_Yaw,   CONTROL_RATE_KP_YAW, CONTROL_RATE_KI_YAW, CONTROL_RATE_KD_YAW, CONTROL_RATE_KF_YAW, CONTROL_YAW_I_MAX,   CONTROL_RATE_OUT_MAX);
-//    PID_Set_D_LPF(&Control.PID_S_Roll,  CONTROL_RATE_D_LPF_HZ);
-//    PID_Set_D_LPF(&Control.PID_S_Pitch, CONTROL_RATE_D_LPF_HZ);
-//    PID_Set_D_LPF(&Control.PID_S_Yaw,   CONTROL_RATE_D_LPF_HZ);
+    PID_Init(&Control.PID_S_Roll,  CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
+    PID_Init(&Control.PID_S_Pitch, CONTROL_RATE_KP,     CONTROL_RATE_KI,     CONTROL_RATE_KD,     CONTROL_RATE_KF,     CONTROL_RATE_I_MAX, CONTROL_RATE_OUT_MAX);
+    PID_Init(&Control.PID_S_Yaw,   CONTROL_RATE_KP_YAW, CONTROL_RATE_KI_YAW, CONTROL_RATE_KD_YAW, CONTROL_RATE_KF_YAW, CONTROL_YAW_I_MAX,   CONTROL_RATE_OUT_MAX);
+    PID_Set_D_LPF(&Control.PID_S_Roll,  CONTROL_RATE_D_LPF_HZ);
+    PID_Set_D_LPF(&Control.PID_S_Pitch, CONTROL_RATE_D_LPF_HZ);
+    PID_Set_D_LPF(&Control.PID_S_Yaw,   CONTROL_RATE_D_LPF_HZ);
 
     /*===| 定点模式(速度 -> 姿态角) |===*/
     PID_Init(&Control.PID_S_X, CONTROL_VEL_KP, CONTROL_VEL_KI, 0, 0, CONTROL_VEL_I_MAX, CONTROL_VEL_OUT_MAX);

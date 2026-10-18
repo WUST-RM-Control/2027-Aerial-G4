@@ -33,7 +33,7 @@ uint8_t ins_debug_mode = 0;
 #define INS_FILTER_FS_HZ       1000.0f   /* 滤波器采样率(标称=控制周期 1kHz)   */
 #define INS_GYRO_NOTCH_EN      1u        /* 1=陷波使能(主手段)                */
 #define INS_GYRO_NOTCH_F0      420.0f    /* 陷波中心频率(Hz) ★按实测改        */
-#define INS_GYRO_NOTCH_Q       2.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
+#define INS_GYRO_NOTCH_Q       1.5f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
 #define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
 #define INS_GYRO_LP_FC         150.0f    /* 二阶低通截止频率(Hz)              */
 #define INS_GYRO_FILTER_EKF    1u        /* 1=EKF 也用滤波后角速度(默认原始)  */
@@ -41,6 +41,17 @@ uint8_t ins_debug_mode = 0;
 /* 角速度反馈再串一级一阶低通(兜底): 0=关
  * 注: 0.01(=16Hz) 太滞后, 会让内环发软发飘; 有陷波后这里保持 0 即可 */
 #define INS_ANG_SPEED_TAU      0.0f
+
+/* ── EKF 观测(加速度计)低通时间常数(s): 0 = 完全不过滤 ──
+ * 为什么不能用 0: 桨/电机振动会把加速度矢量在 ±1g 以上调制, 直接送进 EKF 后,
+ *   观测残差 r = |实测重力方向 - 姿态估计出的重力方向| 变大; 一旦超过
+ *   QuaternionEKF.c 里的卡方检验阈值(1e-8, 相当于方向误差约 5.7°), 该帧就会走
+ *   “残差未通过卡方检验 -> 仅预测” 分支 ── 整帧跳过加速度计修正,
+ *   姿态退化成纯陀螺积分。表现就是: 电机一抖欧拉角大幅漂移, 停机后又自己回正。
+ * 取 0.01s ≈ 16Hz: 保留重力(直流)方向, 压掉几十~几百 Hz 的振动,
+ *   残差回到阈值内, 振动期间加速度计修正照常生效。
+ * 注意: 它与 INS.AccelLPF(只用于算运动加速度)无关, 别搞混。 */
+#define INS_EKF_ACCEL_LPF_TAU  0.005f
 
 static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态 [0]Roll [1]Pitch [2]Yaw */
 #if (INS_GYRO_NOTCH_EN == 1u)
@@ -64,7 +75,9 @@ void INS_Init(void)
     IMU_Param.Roll = 0;
     IMU_Param.flag = 1;
 
-    IMU_QuaternionEKF_Init(10, 0.004, 1000000, 1, 0);
+    /* 末位参数 = EKF 内部对加速度计的一阶低通时间常数(s), 0 = 不过滤
+     * 详见文件顶部 INS_EKF_ACCEL_LPF_TAU 的说明 */
+    IMU_QuaternionEKF_Init(10, 0.004, 1000000, 1, INS_EKF_ACCEL_LPF_TAU);
 
     INS.AccelLPF = 0.0085;
 
