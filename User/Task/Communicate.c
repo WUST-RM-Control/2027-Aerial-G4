@@ -25,14 +25,14 @@ void Communicate_Task(void *argument)
 //        Vofa_JF_Add_Data(12, PMW3901.SQUAL);
 
         
-//        Vofa_JF_Add_Data(0, Control.Duty[0]);
-//        Vofa_JF_Add_Data(1, Control.Duty[1]);
-//        Vofa_JF_Add_Data(2, Control.Duty[2]);
-//        Vofa_JF_Add_Data(3, Control.Duty[3]);
-//        Vofa_JF_Add_Data(4, Control.T_Height);
-//        Vofa_JF_Add_Data(5, Control.T_Pitch);
-//        Vofa_JF_Add_Data(6, Control.T_Roll);
-//        Vofa_JF_Add_Data(7, Control.T_Yaw);
+        Vofa_JF_Add_Data(0, Control.Duty[0]);
+        Vofa_JF_Add_Data(1, Control.Duty[1]);
+        Vofa_JF_Add_Data(2, Control.Duty[2]);
+        Vofa_JF_Add_Data(3, Control.Duty[3]);
+        Vofa_JF_Add_Data(4, Control.T_Height);
+        Vofa_JF_Add_Data(5, Control.T_Pitch);
+        Vofa_JF_Add_Data(6, Control.T_Roll);
+        Vofa_JF_Add_Data(7, Control.T_Yaw);
         
         /* ---- 高度融合诊断用(判断"速度偏置/漂移"来自哪一路): 取消下面注释、
          *      并注释掉上面的俯仰 PID 组即可 ----
@@ -60,16 +60,16 @@ void Communicate_Task(void *argument)
 //        Vofa_JF_Add_Data(7, Control.PID_S_Pitch.I_Output);
 //        Vofa_JF_Add_Data(8, Control.PID_S_Pitch.F_Output);
         
-        Vofa_JF_Add_Data(0, INS.YawTotalAngle);
-        Vofa_JF_Add_Data(1, INS.Roll);
-        Vofa_JF_Add_Data(2, INS.Pitch);
-        Vofa_JF_Add_Data(3, INS.Yaw_Speed);
-        Vofa_JF_Add_Data(4, INS.Roll_Speed);
-        Vofa_JF_Add_Data(5, INS.Pitch_Speed);
+//        Vofa_JF_Add_Data(0, INS.YawTotalAngle);
+//        Vofa_JF_Add_Data(1, INS.Roll);
+//        Vofa_JF_Add_Data(2, INS.Pitch);
+//        Vofa_JF_Add_Data(3, INS.Yaw_Speed);
+//        Vofa_JF_Add_Data(4, INS.Roll_Speed);
+//        Vofa_JF_Add_Data(5, INS.Pitch_Speed);
 
         Vofa_JF_Send();
         
-        osDelay(1);
+        osDelay(10);
     }
 }
 
