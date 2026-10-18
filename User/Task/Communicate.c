@@ -10,29 +10,29 @@ void Communicate_Task(void *argument)
     
     for(;;)
     {
-        Vofa_JF_Add_Data(0, Sensor.BatV);
-        Vofa_JF_Add_Data(1, Sensor.Flow_Pix_Vx);
-        Vofa_JF_Add_Data(2, Sensor.Flow_Pix_Vy);
-        Vofa_JF_Add_Data(3, Sensor.Bar_Height_mm);
-        Vofa_JF_Add_Data(4, Sensor.TOF_Height_mm);
-        Vofa_JF_Add_Data(5, INS.YawTotalAngle);
-        Vofa_JF_Add_Data(6, INS.Roll);
-        Vofa_JF_Add_Data(7, INS.Pitch);
-        Vofa_JF_Add_Data(8, Sensor.Height_mm);
-        Vofa_JF_Add_Data(9, Sensor.Height_Speed_mm);
-        Vofa_JF_Add_Data(10, Sensor.Vel_X_mm);
-        Vofa_JF_Add_Data(11, Sensor.Vel_Y_mm);
-        Vofa_JF_Add_Data(12, PMW3901.SQUAL);
+//        Vofa_JF_Add_Data(0, Sensor.BatV);
+//        Vofa_JF_Add_Data(1, Sensor.Flow_Pix_Vx);
+//        Vofa_JF_Add_Data(2, Sensor.Flow_Pix_Vy);
+//        Vofa_JF_Add_Data(3, Sensor.Bar_Height_mm);
+//        Vofa_JF_Add_Data(4, Sensor.TOF_Height_mm);
+//        Vofa_JF_Add_Data(5, INS.YawTotalAngle);
+//        Vofa_JF_Add_Data(6, INS.Roll);
+//        Vofa_JF_Add_Data(7, INS.Pitch);
+//        Vofa_JF_Add_Data(8, Sensor.Height_mm);
+//        Vofa_JF_Add_Data(9, Sensor.Height_Speed_mm);
+//        Vofa_JF_Add_Data(10, Sensor.Vel_X_mm);
+//        Vofa_JF_Add_Data(11, Sensor.Vel_Y_mm);
+//        Vofa_JF_Add_Data(12, PMW3901.SQUAL);
 
         
-//        Vofa_JF_Add_Data(0, Control.Duty[0]);
-//        Vofa_JF_Add_Data(1, Control.Duty[1]);
-//        Vofa_JF_Add_Data(2, Control.Duty[2]);
-//        Vofa_JF_Add_Data(3, Control.Duty[3]);
-//        Vofa_JF_Add_Data(4, Control.T_Height);
-//        Vofa_JF_Add_Data(5, Control.T_Pitch);
-//        Vofa_JF_Add_Data(6, Control.T_Roll);
-//        Vofa_JF_Add_Data(7, Control.T_Yaw);
+        Vofa_JF_Add_Data(0, Control.Duty[0]);
+        Vofa_JF_Add_Data(1, Control.Duty[1]);
+        Vofa_JF_Add_Data(2, Control.Duty[2]);
+        Vofa_JF_Add_Data(3, Control.Duty[3]);
+        Vofa_JF_Add_Data(4, Control.T_Height);
+        Vofa_JF_Add_Data(5, Control.T_Pitch);
+        Vofa_JF_Add_Data(6, Control.T_Roll);
+        Vofa_JF_Add_Data(7, Control.T_Yaw);
         
         /* ---- 高度融合诊断用(判断"速度偏置/漂移"来自哪一路): 取消下面注释、
          *      并注释掉上面的俯仰 PID 组即可 ----

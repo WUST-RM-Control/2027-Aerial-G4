@@ -32,7 +32,7 @@ uint8_t ins_debug_mode = 0;
  *============================================================================*/
 #define INS_FILTER_FS_HZ       1000.0f   /* 滤波器采样率(标称=控制周期 1kHz)   */
 #define INS_GYRO_NOTCH_EN      1u        /* 1=陷波使能(主手段)                */
-#define INS_GYRO_NOTCH_F0      386.0f    /* 陷波中心频率(Hz) ★按实测改        */
+#define INS_GYRO_NOTCH_F0      408.0f    /* 陷波中心频率(Hz) ★按实测改        */
 #define INS_GYRO_NOTCH_Q       1.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
 #define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
 #define INS_GYRO_LP_FC         150.0f    /* 二阶低通截止频率(Hz)              */
@@ -42,7 +42,18 @@ uint8_t ins_debug_mode = 0;
  * 注: 0.01(=16Hz) 太滞后, 会让内环发软发飘; 有陷波后这里保持 0 即可 */
 #define INS_ANG_SPEED_TAU      0.0f
 
-static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态 [0]Roll [1]Pitch [2]Yaw */
+/* ── EKF 观测(加速度计)低通时间常数(s): 0 = 完全不过滤 ──
+ * 为什么不能用 0: 桨/电机振动会把加速度矢量在 ±1g 以上调制, 直接送进 EKF 后,
+ *   观测残差 r = |实测重力方向 - 姿态估计出的重力方向| 变大; 一旦超过
+ *   QuaternionEKF.c 里的卡方检验阈值(1e-8, 相当于方向误差约 5.7°), 该帧就会走
+ *   “残差未通过卡方检验 -> 仅预测” 分支 ── 整帧跳过加速度计修正,
+ *   姿态退化成纯陀螺积分。表现就是: 电机一抖欧拉角大幅漂移, 停机后又自己回正。
+ * 取 0.01s ≈ 16Hz: 保留重力(直流)方向, 压掉几十~几百 Hz 的振动,
+ *   残差回到阈值内, 振动期间加速度计修正照常生效。
+ * 注意: 它与 INS.AccelLPF(只用于算运动加速度)无关, 别搞混。 */
+#define INS_EKF_ACCEL_LPF_TAU  0.005f
+
+static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态(芯片原始轴向) [0]=GyroX [1]=GyroY [2]=GyroZ */
 #if (INS_GYRO_NOTCH_EN == 1u)
 static Biquad_t INS_Gyro_Notch[3];
 #endif
@@ -64,7 +75,9 @@ void INS_Init(void)
     IMU_Param.Roll = 0;
     IMU_Param.flag = 1;
 
-    IMU_QuaternionEKF_Init(10, 0.002, 1000000, 1, 0);
+    /* 末位参数 = EKF 内部对加速度计的一阶低通时间常数(s), 0 = 不过滤
+     * 详见文件顶部 INS_EKF_ACCEL_LPF_TAU 的说明 */
+    IMU_QuaternionEKF_Init(10, 0.008, 100000, 1, INS_EKF_ACCEL_LPF_TAU);
 
     INS.AccelLPF = 0.0085;
 
@@ -131,15 +144,14 @@ void INS_Task(void)
         }
 
         /*=== 陀螺滤波: 原始 -> 陷波 -> 二阶低通 ->(可选)一阶低通 ===
-         * 结果给角速度内环(INS.*_Speed)与遥测; 是否给 EKF 见 INS_GYRO_FILTER_EKF。
-         * 符号约定: Roll=+GyroX, Pitch=-GyroY, Yaw=+GyroZ(与控制内环一致) */
+         * 滤波全程在“芯片原始轴向”上做; 轴向映射只在最后赋给 INS.*_Speed 时做一次,
+         * 这样给 EKF 的那份永远是原始轴向(见 INS_GYRO_FILTER_EKF)。 */
         {
-            static const float Gyro_Sign[3] = { 1.0f, -1.0f, 1.0f };   /* X:+  Y:-  Z:+ */
             float gch;
 
             for (uint8_t i = 0; i < 3; i++)
             {
-                gch = Gyro_Sign[i] * INS.Gyro[i] * Rad2Angle;          /* rad/s -> °/s */
+                gch = INS.Gyro[i] * Rad2Angle;                         /* 原始轴向, rad/s -> °/s */
 
 #if (INS_GYRO_NOTCH_EN == 1u)
                 gch = Biquad_Update(&INS_Gyro_Notch[i], gch);          /* 陷波: 削振动主峰 */
@@ -159,16 +171,21 @@ void INS_Task(void)
                 }
             }
 
-            INS.Roll_Speed  = INS_Speed_LP[0];
-            INS.Pitch_Speed = INS_Speed_LP[1];
-            INS.Yaw_Speed   = INS_Speed_LP[2];
-
 #if (INS_GYRO_FILTER_EKF == 1u)
-            /* 给 EKF 用: 换回 rad/s 与原始轴向(符号取反回去) */
-            INS_Gyro_F[X] =  INS.Roll_Speed  * Angle2Rad;
-            INS_Gyro_F[Y] = -INS.Pitch_Speed * Angle2Rad;
-            INS_Gyro_F[Z] =  INS.Yaw_Speed   * Angle2Rad;
+            /* 给 EKF 用: 滤波后角速度, 保持芯片原始轴向(rad/s), 不参与下面的符号翻转 */
+            INS_Gyro_F[X] = INS_Speed_LP[0] * Angle2Rad;
+            INS_Gyro_F[Y] = INS_Speed_LP[1] * Angle2Rad;
+            INS_Gyro_F[Z] = INS_Speed_LP[2] * Angle2Rad;
 #endif
+
+            /* 给控制内环/遥测用: 芯片轴向 -> 机体系
+             * 实测(芯片是绕 Z 转 90° 装的, 所以 Roll/Pitch 轴互换且都取负):
+             *   真实 Roll  角速度 = -GyroY
+             *   真实 Pitch 角速度 = -GyroX
+             *   真实 Yaw   角速度 = +GyroZ */
+            INS.Roll_Speed  = -INS_Speed_LP[1];
+            INS.Pitch_Speed = -INS_Speed_LP[0];
+            INS.Yaw_Speed   =  INS_Speed_LP[2];
         }
 
         // 计算重力加速度矢量和b系的XY两轴的夹角,可用作功能扩展,本demo暂时没用
@@ -200,8 +217,8 @@ void INS_Task(void)
 
         // 获取最终数据
         INS.Yaw = QEKF_INS.Yaw;
-        INS.Pitch = -QEKF_INS.Roll;
-        INS.Roll = QEKF_INS.Pitch;
+        INS.Roll = -QEKF_INS.Roll;
+        INS.Pitch = -QEKF_INS.Pitch;
         INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
         INS.Last_Yaw = INS.Yaw;
 

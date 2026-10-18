@@ -10,6 +10,7 @@ void Limit_int(int *Input, int Up, int Down);
 void Ignor_float(float *Input,  float Up, float Down);
 /*===| 死区限制 |===*/
 void Deadline_Float(float *Input,  float Up, float Down);
+void Deadline_Line_Float(float *Input, float DeadLine);
 /*===| 输出缓加减速 |===*/
 void Acc_and_Dec(float Target, float *Output, float Acc, float Dec, float Dt);
 /*===| 计算两点间距 |===*/

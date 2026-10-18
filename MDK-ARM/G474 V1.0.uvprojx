@@ -522,14 +522,14 @@
               <FilePath>..\User\Task\Control.c</FilePath>
             </File>
             <File>
-              <FileName>INS.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\Task\INS.c</FilePath>
-            </File>
-            <File>
               <FileName>Sensor.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\Task\Sensor.c</FilePath>
+            </File>
+            <File>
+              <FileName>INS.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\Task\INS.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -611,6 +611,11 @@
         <Group>
           <GroupName>Algorithm</GroupName>
           <Files>
+            <File>
+              <FileName>Attitude.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\Algorithm\Attitude.c</FilePath>
+            </File>
             <File>
               <FileName>Function.c</FileName>
               <FileType>1</FileType>

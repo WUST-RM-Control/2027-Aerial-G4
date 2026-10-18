@@ -15,6 +15,27 @@
  */
 #include "QuaternionEKF.h"
 
+/*══════════════════════ 观测“拒测”开关 ══════════════════════
+ * 原版行为(QEKF_CHISQ_REJECT_EN = 1):
+ *   卡方检验残差 rk 超过 ChiSquareTestThreshold(1e-8, 配合 R=1e6 相当于
+ *   重力方向误差约 5.7°) 且载体不静止时, 本帧直接“仅预测” ——
+ *   **整帧跳过加速度计修正**, 姿态退化为纯陀螺积分。
+ *   振动把加速度矢量调制 ±1g 以上时会频繁触发, 表现就是“电机一抖欧拉角
+ *   大幅漂移, 停机后又自己回正”。
+ *
+ * 关闭拒测(QEKF_CHISQ_REJECT_EN = 0, 当前):
+ *   加速度计修正**永不整帧丢弃**, 只按残差大小做自适应衰减, 并用
+ *   QEKF_ADAPT_GAIN_MIN 兜住下限 —— 振动期间始终有修正把姿态往重力方向拉,
+ *   漂移不再自由积分。
+ *   代价: 加速度计确实不可信时(强烈机动/外界加速度)修正会引入误差,
+ *   所以下限别给大: 先 0.1, 观察机动表现再往上加。
+ *
+ * 注意: 关闭拒测后 rk 可以远超阈值, 原式 (阈-rk)/(0.9*阈) 会算出负增益
+ *   (负增益 = 反向修正 = 发散), 所以下面必顶把它夹到 [MIN, 1]。
+ *═════════════════════════════════════════════════════════════ */
+#define QEKF_CHISQ_REJECT_EN    0u
+#define QEKF_ADAPT_GAIN_MIN     0.1f
+
 QEKF_INS_t QEKF_INS;
 
 const float IMU_QuaternionEKF_F[36] = {1, 0, 0, 0, 0, 0,
@@ -375,6 +396,7 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
         QEKF_INS.ConvergeFlag = 1;
     }
     // rk is bigger than thre but once converged
+#if (QEKF_CHISQ_REJECT_EN == 1u)
     if (QEKF_INS.ChiSquare_Data[0] > QEKF_INS.ChiSquareTestThreshold && QEKF_INS.ConvergeFlag)
     {
         if (QEKF_INS.StableFlag)
@@ -404,6 +426,7 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
         }
     }
     else // if divergent or rk is not that big/acceptable,use adaptive gain
+#endif
     {
         // scale adaptive,rk越小则增益越大,否则更相信预测值
         if (QEKF_INS.ChiSquare_Data[0] > 0.1f * QEKF_INS.ChiSquareTestThreshold && QEKF_INS.ConvergeFlag)
@@ -414,6 +437,20 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
         {
             QEKF_INS.AdaptiveGainScale = 1;
         }
+
+#if (QEKF_CHISQ_REJECT_EN == 0u)
+        /* 拒测已关: 上面的式子在大残差时会给负值 -> 夹到 [MIN, 1],
+         * 保证“振动期间修正不被丢掉”又不至于反向修正发散 */
+        if (QEKF_INS.AdaptiveGainScale > 1.0f)
+        {
+            QEKF_INS.AdaptiveGainScale = 1.0f;
+        }
+        if (QEKF_INS.AdaptiveGainScale < QEKF_ADAPT_GAIN_MIN)
+        {
+            QEKF_INS.AdaptiveGainScale = QEKF_ADAPT_GAIN_MIN;
+        }
+#endif
+
         QEKF_INS.ErrorCount = 0;
         kf->SkipEq5 = FALSE;
     }
