@@ -89,5 +89,9 @@ extern Control_StructTypedef Control;
 void Control_Set_Duty(uint8_t Fan_ID, float Duty_100);
 void Control_Set_Thrust(uint8_t Fan_ID, float Thrust_100);
 
+/* Flight_Task 用接口: 初始化(PID+DShot) / 单拍控制(4kHz 调用, 内部不延时) */
+void Control_Init(void);
+void Control_Update(void);
+
 
 #endif

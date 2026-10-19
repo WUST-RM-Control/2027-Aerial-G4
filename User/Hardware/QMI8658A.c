@@ -6,6 +6,8 @@ QMI8658A_StructTypedef QMI8658A;
 
 
 //QMI8658A通信配置
+//  SPI2 内核时钟 170MHz(PCLK1) / 16 = 10.625MHz: 读一次 15 字节 ≈ 11us
+//  (原 PSC=32 是 5.3MHz ≈ 23us, 4kHz 下白白多占 5% CPU)
 #define QMI8658A_SPI        hspi2
 #define QMI8658A_CS(PIN_Status)    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, PIN_Status)
 
@@ -51,12 +53,18 @@ uint8_t QMI8658A_Init_RegList[][2] =
 {   
     {QMI8658A_Reg_CTRL1     , 0x60}, // 开启SPI地址自动递增,MSB
     {QMI8658A_Reg_CTRL7     , 0x00}, // 关闭加速度计+陀螺仪+温度传感器
-    {QMI8658A_Reg_CTRL2     , 0x23}, // 加速度计：量程±8g(aFS=2)，输出数据率896.8Hz(aODR=3)
-    {QMI8658A_Reg_CTRL3     , 0x73}, // 陀螺仪：量程±2048dps(gFS=7)，输出数据率896.8Hz(gODR=3)
+    /* ODR 档位: 0=7174.4Hz 1=3587.2Hz 2=1793.6Hz 3=896.8Hz ...
+     * 4kHz 主循环必须用 0 或 1: 用 3(896.8Hz) 的话一拍只能读到 0.22 个新样本,
+     * 同一个样本会被重复读 4 次 -> 没有新信息, D 项还会被喂成阶梯。
+     * 取 0(7174.4Hz): 每拍都能拿到新样本, 且样本"年龄"抖动只有 0~139us(取 1 是 0~279us),
+     * 对靠差分的 D 项更友好。 */
+    {QMI8658A_Reg_CTRL2     , 0x20}, // 加速度计：量程±8g(aFS=2)，输出数据率7174.4Hz(aODR=0)
+    {QMI8658A_Reg_CTRL3     , 0x70}, // 陀螺仪：量程±2048dps(gFS=7, 最大量程)，输出数据率7174.4Hz(gODR=0)
     // CTRL5 内置低通：bit0=加速度计LPF使能, bit[2:1]=加速度计档位, bit4=陀螺LPF使能, bit[6:5]=陀螺档位
     //   档位 = ODR的百分比(0=2.66% 1=3.63% 2=5.39% 3=13.37%)
-    //   0x77 = 两路都开、档位3(13.37%) → 896.8Hz*13.37% ≈ 120Hz，延迟约1.9ms
-    //          (原 0x33 是档位1 = 32.5Hz，延迟约5~7ms，滞后过大)
+    //   0x77 = 两路都开、档位3(13.37%) → 7174.4Hz*13.37% ≈ 959Hz，延迟约0.17ms
+    //          (ODR 提到 7174 后，原 120Hz 对应的 0x77 自动变成 959Hz: 截止频率 = 百分比 × ODR)
+    //          带宽留给软件陷波/低通去管, 芯片侧只负责挡掉 Nyquist(2kHz) 以上的东西
     //          ★ 0x00(全关) 只在需要看“原始振动波形/频谱”时临时用:
     //            带宽无限制 → 加速度计/陀螺的高频振动会直接进 EKF 观测,
     //            残差超卡方阈值后整帧跳过加速度计修正 → 纯陀螺积分漂移
@@ -93,7 +101,10 @@ void QMI8658A_Read_Data(void)
     
     QMI8658A_Read_RegList(QMI8658A_Reg_TEMP_L, 14, (uint8_t*)&RAW_Data);    
     
-    //根据量程解包 (CTRL2=±8g, CTRL3=±2048dps)
+    /* 根据量程解包 (CTRL2=±8g, CTRL3=±2048dps)
+     * ±8g: 4096 LSB/g, 1 LSB ≈ 0.0024 m/s² ≈ 0.24mg(≈0.014° 倾角)。
+     * EKF 只看重力方向, 这点量化噪声可忽略; 若需要更大抗冲击范围,
+     * 把 CTRL2 改回 0x30(±16g) 并同步改下面系数为 16.0f。 */
     QMI8658A.Temperature =  RAW_Data.Tempture / 256.0f;
     QMI8658A.Accel[0] = 8.0f * GRAVITY * RAW_Data.AX / 32768.0f;
     QMI8658A.Accel[1] = 8.0f * GRAVITY * RAW_Data.AY / 32768.0f;

@@ -48,8 +48,7 @@
 
 /* USER CODE END Variables */
 osThreadId defaultTaskHandle;
-osThreadId INSHandle;
-osThreadId ControlHandle;
+osThreadId FlightHandle;
 osThreadId SensorHandle;
 osThreadId RemoteHandle;
 osThreadId BuzzerHandle;
@@ -62,8 +61,7 @@ osThreadId CommunicateHandle;
 /* USER CODE END FunctionPrototypes */
 
 void StartDefaultTask(void const * argument);
-void INS_Task(void const * argument);
-void Control_Task(void const * argument);
+void Flight_Task(void const * argument);
 void Sensor_Task(void const * argument);
 void Remote_Task(void const * argument);
 void Buzzer_Task(void const * argument);
@@ -103,13 +101,9 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
-  /* definition and creation of INS */
-  osThreadDef(INS, INS_Task, osPriorityAboveNormal, 0, 4096);
-  INSHandle = osThreadCreate(osThread(INS), NULL);
-
-  /* definition and creation of Control */
-  osThreadDef(Control, Control_Task, osPriorityHigh, 0, 1024);
-  ControlHandle = osThreadCreate(osThread(Control), NULL);
+  /* definition and creation of Flight */
+  osThreadDef(Flight, Flight_Task, osPriorityRealtime, 0, 4096);
+  FlightHandle = osThreadCreate(osThread(Flight), NULL);
 
   /* definition and creation of Sensor */
   osThreadDef(Sensor, Sensor_Task, osPriorityAboveNormal, 0, 1024);
@@ -128,7 +122,9 @@ void MX_FREERTOS_Init(void) {
   LEDHandle = osThreadCreate(osThread(LED), NULL);
 
   /* definition and creation of Communicate */
-  osThreadDef(Communicate, Communicate_Task, osPriorityLow, 0, 512);
+  /* 4kHz VOFA 发送: 每拍只做一次 memcpy + 启动 DMA(~2us), 但必须能及时抢占
+     低优先级任务, 否则信号量还在挂着就会丢帧 -> 提到 osPriorityHigh */
+  osThreadDef(Communicate, Communicate_Task, osPriorityHigh, 0, 512);
   CommunicateHandle = osThreadCreate(osThread(Communicate), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -157,40 +153,23 @@ __weak void StartDefaultTask(void const * argument)
   /* USER CODE END StartDefaultTask */
 }
 
-/* USER CODE BEGIN Header_INS_Task */
+/* USER CODE BEGIN Header_Flight_Task */
 /**
-* @brief Function implementing the INS thread.
+* @brief Function implementing the Flight thread.
 * @param argument: Not used
 * @retval None
+* @note  4kHz 主循环的入口在 User/Task/Flight.c, 这里是 CubeMX 生成的弱定义
 */
-/* USER CODE END Header_INS_Task */
-__weak void INS_Task(void const * argument)
+/* USER CODE END Header_Flight_Task */
+__weak void Flight_Task(void const * argument)
 {
-  /* USER CODE BEGIN INS_Task */
+  /* USER CODE BEGIN Flight_Task */
   /* Infinite loop */
   for(;;)
   {
     osDelay(1);
   }
-  /* USER CODE END INS_Task */
-}
-
-/* USER CODE BEGIN Header_Control_Task */
-/**
-* @brief Function implementing the Control thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_Control_Task */
-__weak void Control_Task(void const * argument)
-{
-  /* USER CODE BEGIN Control_Task */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END Control_Task */
+  /* USER CODE END Flight_Task */
 }
 
 /* USER CODE BEGIN Header_Sensor_Task */

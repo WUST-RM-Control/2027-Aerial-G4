@@ -441,41 +441,45 @@ static void Control_Output(void)
 }
 
 /*============================================================================
- *  任务主循环 1kHz
+ *  初始化(只跑一次, 由 Flight_Task 在 4kHz 节拍启动前调用)
  *===========================================================================*/
-void Control_Task(void *argument)
+void Control_Init(void)
 {
-    float Thr, Yw, Pt, Rl;
-
-    osDelay(100);
     Control.Target_Yaw = INS.YawTotalAngle;
     Control.V_Comp     = 1.0f;
 
     Control_PID_Init();
     DShot_Init();
 
+    /* 预置 DWT 计时起点: 否则第一拍 dt 会是"上电到现在"的一个大值 */
     DWT_GetDeltaT(&Control_DWT_Count);
-    for (;;)
-    {
-        Control_Dt = DWT_GetDeltaT(&Control_DWT_Count);
+}
 
-        Control_UpdateEnable();
-        Control_UpdateMode();
-        Control_ReadStick(&Thr, &Yw, &Pt, &Rl);
-        Control_UpdateTarget(Thr, Yw, Pt, Rl);
-        Control_UpdateFeedback();
+/*============================================================================
+ *  单拍控制(4kHz = 250us, 由 Flight_Task 在 TIM6 节拍里调用, 内部不延时)
+ *    DShot 也跟着每拍发一帧 -> 输出 4kHz
+ *===========================================================================*/
+void Control_Update(void)
+{
+    float Thr, Yw, Pt, Rl;
+
+    Control_Dt = DWT_GetDeltaT(&Control_DWT_Count);
+
+    Control_UpdateEnable();
+    Control_UpdateMode();
+    Control_ReadStick(&Thr, &Yw, &Pt, &Rl);
+    Control_UpdateTarget(Thr, Yw, Pt, Rl);
+    Control_UpdateFeedback();
 
 #if CONTROL_AUTO_ROLL
-        Control_AutoRollUpdate();
+    Control_AutoRollUpdate();
 #endif
 
-        Control_PositionLoop();
-        Control_AttitudeLoop();
-        Control_RateLoop();
-        Control_Mixer();
-        Control_Output();
+    Control_PositionLoop();
+    Control_AttitudeLoop();
+    Control_RateLoop();
+    Control_Mixer();
+    Control_Output();
 
-        DShot_Send();       /* 4 路同帧, 电调靠连续收帧判断信号正常 */
-        osDelay(1);
-    }
+    DShot_Send();       /* 4 路同帧, 电调靠连续收帧判断信号正常 */
 }

@@ -19,7 +19,7 @@
 #define Y 1
 #define Z 2
 
-#define INS_TASK_PERIOD 1
+#define INS_TASK_PERIOD 1      /* 旧接口残留, 实际节拍见 Flight.h 的 FLIGHT_LOOP_HZ */
 
 typedef struct
 {
@@ -70,6 +70,10 @@ typedef struct
 extern INS_t INS;
 
 void INS_Init(void);
+
+/* Flight_Task 用接口: 初始化(只一次) / 单拍解算(4kHz 调用, 内部不延时) */
+void INS_Init_All(void);
+void INS_Update(void);
 
 void QuaternionUpdate(float *q, float gx, float gy, float gz, float dt);
 void QuaternionToEularAngle(float *q, float *Yaw, float *Pitch, float *Roll);
