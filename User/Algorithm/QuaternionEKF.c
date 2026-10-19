@@ -34,7 +34,7 @@
  *   (负增益 = 反向修正 = 发散), 所以下面必顶把它夹到 [MIN, 1]。
  *═════════════════════════════════════════════════════════════ */
 #define QEKF_CHISQ_REJECT_EN    0u
-#define QEKF_ADAPT_GAIN_EN      0u      /* 0 = 不做自适应衰减, 加计修正恒为满增益 */
+#define QEKF_ADAPT_GAIN_EN      1u      /* 0 = 不做自适应衰减, 加计修正恒为满增益 */
 #define QEKF_ADAPT_GAIN_MIN     0.2f
 #define QEKF_CHISQ_GATE_RAD     0.1f    /* 门限对应的“重力方向残差”(rad): 0.1 rad ≈ 5.7° */
 

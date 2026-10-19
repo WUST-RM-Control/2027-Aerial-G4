@@ -54,12 +54,12 @@ void Attitude_Quat2RotMatrix(const float q[4], float R[3][3])
  * @param q_cur 当前姿态四元数
  * @param q_tgt 目标姿态四元数
  * @param Err   输出 [0]=Roll [1]=Pitch [2]=Yaw (deg)
- * @note  误差矢量表达在“当前姿态坐标系” = IMU 芯片坐标系里,
- *        下面再做一次芯片->机体的轴向映射(与 INS.c 的角速度映射完全一致):
- *          芯片 X 轴 = -机体俯仰轴   芯片 Y 轴 = -机体横滚轴
- *          芯片 Z 轴 = +机体偏航轴
- *        所以 Err[0] 取 -qe[2], Err[1] 取 -qe[1]。
- *        改 IMU 安装方向时, 这两行必须和 INS.c 的 Roll_Speed/Pitch_Speed 一起改。
+ * @note  误差矢量表达在“当前姿态坐标系” = IMU 输出坐标系里,
+ *        下面再做一次输出->机体的轴向映射(与 INS.c 的角速度映射完全一致):
+ *          输出 X 轴 = +机体横滚轴   输出 Y 轴 = -机体俯仰轴
+ *          输出 Z 轴 = +机体偏航轴
+ *        所以 Err[0] 取 +qe[1], Err[1] 取 -qe[2]。
+ *        改 IMU 安装方向/Frame_R 时, 这两行必须和 INS.c 的 Roll_Speed/Pitch_Speed 一起改。
  */
 void Attitude_QuatError(const float q_cur[4], const float q_tgt[4], float Err[3])
 {
@@ -88,9 +88,9 @@ void Attitude_QuatError(const float q_cur[4], const float q_tgt[4], float Err[3]
     s = sqrtf(qe[1] * qe[1] + qe[2] * qe[2] + qe[3] * qe[3]);
     k = (s > 1e-6f) ? (2.0f * atan2f(s, qe[0]) * Rad2Angle / s) : 0.0f;
 
-    Err[0] = -qe[2] * k;        /* Roll : 绕机体X (= -绕芯片Y) */
-    Err[1] = -qe[1] * k;        /* Pitch: 绕机体Y (= -绕芯片X, 与 INS.Pitch 同号) */
-    Err[2] =  qe[3] * k;        /* Yaw  : 绕机体Z (= +绕芯片Z) */
+    Err[0] =  qe[1] * k;        /* Roll : 绕机体X (= +绕输出X) */
+    Err[1] = -qe[2] * k;        /* Pitch: 绕机体Y (= -绕输出Y, 与 INS.Pitch 同号) */
+    Err[2] =  qe[3] * k;        /* Yaw  : 绕机体Z (= +绕输出Z) */
 }
 
 /**

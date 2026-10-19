@@ -33,7 +33,7 @@ void Sensor_Task(void *argument)
         //获取传感器数据
         PMW3901_Read_Data();   // 光流原始计数
         SPA06_Read_Data();     // 气压Pa/温度/海拔
-        VL53L1_Read_Data();   // 距离mm; 非阻塞, 只有拿到新样本才返回1
+        // VL53L1 在下面的 TOF 高度处读: 只有拿到新样本才做卡尔曼更新
         
         //电池电压采集
         HAL_ADC_Start(&hadc2);
@@ -46,10 +46,23 @@ void Sensor_Task(void *argument)
         //气压计数据
         Bar_Update(&Sensor.Bar_Height_mm, &Sensor.Bar_Height_Speed_mm, SPA06.Relative_Height_mm, Sensor_Task_Dt);
         
-        //TOF数据
-        /* 倾斜补偿的 cos(倾角) 由四元数给出: 机体Z轴在导航系下的Z分量(=INS.zn[2]),
-         * 大角度/倒扣时不会像欧拉角那样折叠, 也不会在中途失效 */
-        TOF_Update(&Sensor.TOF_Height_mm, &Sensor.TOF_Height_Speed_mm, VL53L1.Distance_mm, INS.zn[2], Sensor_Task_Dt);
+        //TOF数据: 只有拿到"新样本"才更新(TOF ~30Hz, 任务是 ~48Hz),
+        //         dt 必须用"两次新样本的时间差", 不能用任务周期
+        {
+            static uint32_t TOF_LastMs = 0;
+
+            if (VL53L1_Read_Data())     /* 非阻塞: 未就绪立即返回 0 */
+            {
+                uint32_t now_ms = HAL_GetTick();
+                float dt_tof = (TOF_LastMs != 0u) ? ((float)(now_ms - TOF_LastMs) * 0.001f) : 0.033f;
+                TOF_LastMs = now_ms;
+
+                /* 倾斜补偿的 cos(倾角) 由四元数给出: 机体Z轴在导航系下的Z分量(=INS.zn[2]),
+                 * 大角度/倒扣时不会像欧拉角那样折叠, 也不会在中途失效 */
+                TOF_Update(&Sensor.TOF_Height_mm, &Sensor.TOF_Height_Speed_mm,
+                           VL53L1.Distance_mm, INS.zn[2], dt_tof);
+            }
+        }
         
         //高度数据融合
 //        Sensor.Height_mm       = Sensor.Bar_Height_mm;
@@ -96,42 +109,32 @@ void Bar_Update(float *Bar_Height_Out, float *Bar_Height_Speed_Out, float Bar_He
  * ① 平滑 / 跟随的权衡(R 与 Q 之比):
  *      SENSOR_TOF_MEAS_STD 调大 => 更信模型: 高度/速度更平滑, 但跟随更慢
  *      SENSOR_TOF_ACC_STD  调大 => 更信量测: 跟随更快, 但高度/速度更抖
- * ② 反射面突变(地面 <-> 桌子上空/台阶): 跳变先吸收到基准偏置(输出不跳变),
- *    再按 SENSOR_TOF_TAU_OFFSET 缓慢跟随新反射面
- * ③ 保护: 倾角过大时限制 cos 放大; 量程外的测距值直接丢弃
+ * ② 保护: 倾角过大时限制 cos 放大; 量程外的测距值直接丢弃
+ *    调用约定: 只在“拿到新样本”时调用一次, Dt 用两次新样本的时间差(~33ms)
  * ======================================================================= */
 #define SENSOR_TOF_MEAS_STD        5.0f    //高度量测噪声标准差(mm): 测距噪声+倾角补偿残差   [大=平滑]
-#define SENSOR_TOF_ACC_STD         400.0f   //垂直加速度过程噪声标准差(mm/s^2)             [大=跟随快]
-#define SENSOR_TOF_MAX_INNOV       300.0f   //突变判据(mm): 高度偏离超此值判为换了反射面   [小=更敏感]
-#define SENSOR_TOF_TAU_OFFSET      2.0f     //突变后跟随新反射面的时间常数(s)              [小=适应快]
+#define SENSOR_TOF_ACC_STD         200.0f   //垂直加速度过程噪声标准差(mm/s^2)             [大=跟随快]
 #define SENSOR_TOF_RANGE_MAX       4000.0f  //有效量程(mm): 0(未出数据)/超量程按无效量测丢弃
 #define SENSOR_TOF_MIN_COS_TILT    0.174f   //cos(80°): 倾角过大/倒扣时的放大上限, 防高度炸开
 
 void TOF_Update(float *TOF_Height_Out, float *TOF_Height_Speed_Out, float TOF_Distence,
                       float Cos_Tilt, float Dt)
 {
-    static float Height_Last;          //上一帧倾角补偿后的高度(mm), 供粗检用
-    static float Speed_Last;           //上一帧原始差分速度(mm/s), 供粗检用
-    static float Height_NoFilter;      //状态量1: 高度估计(mm), 即原来的积分高度
+    static float Height_NoFilter;      //状态量1: 高度估计(mm)
     static float Speed_NoFilter;       //状态量2: 速度估计(mm/s)
-    static float Height_Offset;        //反射面基准偏置(mm): 突变先吸收到这里(输出不跳变), 再缓慢泄放
     static float P00, P01, P10, P11;   //状态协方差矩阵 P(k|k)
     static uint8_t KF_Inited;          //首个有效量测用来初始化状态, 避免从0慢慢收敛
     
     
     Limit_float(&Dt, 1, 0.001f);
     
+    /* 倾角补偿: 测距沿机体Z轴, 竖直高度 = d * cos(倾角) */
     float cos_tilt = Cos_Tilt;
     if (cos_tilt < SENSOR_TOF_MIN_COS_TILT) cos_tilt = SENSOR_TOF_MIN_COS_TILT;
     float Height = TOF_Distence * cos_tilt;
     
-    float Speed = (Height - Height_Last) / Dt;   //原始差分速度(mm/s), 噪声大, 只用来粗检
-    
     /* 量测有效性: 参考值10/超量程(如65535)直接丢弃, 不做任何修正, 防止把高度带飞 */
     uint8_t Meas_Valid = (TOF_Distence > 10 && TOF_Distence <= SENSOR_TOF_RANGE_MAX) ? 1 : 0;
-    
-    /* 反射面突变粗检(原判据形式): 原始差分速度相对上一帧发生大跳变 */
-    uint8_t Surface_Changed = (fabsf(Speed - Speed_Last) > SENSOR_TOF_MAX_INNOV / Dt) ? 1 : 0;
     
     /* ========================= 卡尔曼滤波 =========================
      * x = [高度; 速度], F = [1 Dt; 0 1], H = [1 0](量测即倾角补偿后的高度) */
@@ -141,7 +144,6 @@ void TOF_Update(float *TOF_Height_Out, float *TOF_Height_Speed_Out, float TOF_Di
     {
         Height_NoFilter = Height;
         Speed_NoFilter  = 0;
-        Height_Offset   = 0;
         P00 = SENSOR_TOF_MEAS_STD * SENSOR_TOF_MEAS_STD;            //高度方差: 量测噪声量级
         P11 = SENSOR_TOF_ACC_STD * SENSOR_TOF_ACC_STD * Dt * Dt;    //速度方差: 单帧速度噪声量级
         P01 = 0; P10 = 0;
@@ -163,29 +165,18 @@ void TOF_Update(float *TOF_Height_Out, float *TOF_Height_Speed_Out, float TOF_Di
     if(Meas_Valid)
     {
         float S = P_Pos + SENSOR_TOF_MEAS_STD * SENSOR_TOF_MEAS_STD;    //新息协方差
-        float Innovation = (Height + Height_Offset) - Height_NoFilter;  //新息 z - H·x(k|k-1)
+        float Innovation = Height - Height_NoFilter;                    //新息 z - H·x(k|k-1)
         float K_Pos   = P_Pos   / S;                                    //高度增益
         float K_Speed = P_Cross / S;                                    //速度增益
         
-        /* 剔除反射面突变(地面<->桌子上空/台阶): 把跳变吸收到基准偏置里,
-         * 状态与输出都不跳变; 下一帧新息≈0不会一直剔除(否则速度会卡死),
-         * 被吸收的偏置再按 SENSOR_TOF_TAU_OFFSET 缓慢泄放 => 缓慢跟随新的反射面 */
-        if(Surface_Changed || (fabsf(Innovation) > SENSOR_TOF_MAX_INNOV))
-        {
-            Height_Offset -= Innovation;
-            Meas_Valid = 0;
-        }
-        else
-        {
-            Height_NoFilter += K_Pos   * Innovation;
-            Speed_NoFilter  += K_Speed * Innovation;
-            
-            //P(k|k) = (I - K·H)·P(k|k-1)
-            P00 = (1.0f - K_Pos) * P_Pos;
-            P01 = (1.0f - K_Pos) * P_Cross;
-            P10 = P01;
-            P11 = P_Speed - K_Speed * P_Cross;
-        }
+        Height_NoFilter += K_Pos   * Innovation;
+        Speed_NoFilter  += K_Speed * Innovation;
+        
+        //P(k|k) = (I - K·H)·P(k|k-1)
+        P00 = (1.0f - K_Pos) * P_Pos;
+        P01 = (1.0f - K_Pos) * P_Cross;
+        P10 = P01;
+        P11 = P_Speed - K_Speed * P_Cross;
     }
     
     if(!Meas_Valid) //量测被剔除: 只保留预测结果, 等下一个量测
@@ -194,18 +185,9 @@ void TOF_Update(float *TOF_Height_Out, float *TOF_Height_Speed_Out, float TOF_Di
     }
        
     
-    /* 反射面基准偏置缓慢泄放时间常数 SENSOR_TOF_TAU_OFFSET:
-     * 泄放量直接补到状态高度上, 不经过量测更新, 所以不会产生"假速度" */
-    float Offset_Last = Height_Offset;
-    Filter_LowPass(0.0f, &Height_Offset, SENSOR_TOF_TAU_OFFSET, Dt);
-    Height_NoFilter += (Height_Offset - Offset_Last);
-    
     /* 输出 */
     *TOF_Height_Out       = Height_NoFilter;
     *TOF_Height_Speed_Out = Speed_NoFilter;
-    
-    Height_Last = Height;
-    Speed_Last  = Speed;
 }
 
 

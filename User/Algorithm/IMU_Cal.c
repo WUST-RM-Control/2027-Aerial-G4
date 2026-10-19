@@ -10,9 +10,11 @@
  *          该姿态原始加速度 -> 用 Acc_Offset/Acc_Scale 校正得到芯片
  *          坐标系下的“竖直朝上”单位向量 u, 并构造旋转矩阵 R, 使
  *          R*u = (0,0,1), 即正面朝上时输出加速度 = (0,0,+g)。
- *          说明: 加速度计无法感知绕竖直轴的偏航, 因此输出 x/y 取
- *          芯片上垂直于 u 的方向(选芯片 x 尽量指向输出 +x), 绕竖轴
- *          的最终朝向需在整机端另行对齐。
+ *          说明: 加速度计无法感知绕竖直轴的偏航, 所以还要靠阶段3。
+ * 阶段3(锁定机头方向): 把模块摆成“机尾朝下” ~90° 静止, 该姿态下
+ *          加计测到的“竖直向上”正好指向机头 -> 输出 +x = 机头, +y = 左, +z = 上。
+ *          ★ 约定: 一直用[机尾朝下]; 若改成[机头朝下], 输出 x 会反转 180°,
+ *          必须同步改 INS.c / Attitude.c / Control.c 里的三处轴向映射。
  * 陀螺仪  : 静止期间陀螺样本均值 -> Gyro_Offset; 角速度也用 R 转到
  *          输出坐标系。
  * 上电零漂: IMU_Cal_Gyro_Bias_Update() 挂在 INS 主循环里后台实测陀螺
@@ -48,13 +50,20 @@ void IMU_Cal_Read_Raw(float acc[3], float gyr[3])
  * 从而跳过每次都要手动摆姿势的交互式 IMU_Cal() 校准。
  * 若以后改成 Flash 存储, 把 IMU_Cal_Load_Config() 改为读 Flash 即可。
  * ---------------------------------------------------------------- */
-static const float IMU_Cal_Fixed_Acc_Offset[3]  = { 0.304593325f,    0.206411183f,   -0.485507458f };   /* m/s^2 */
-static const float IMU_Cal_Fixed_Acc_Scale[3]   = { 1.00063789f,     1.00721169f,     0.994780362f  };   /* 比例 */
-static const float IMU_Cal_Fixed_Gyro_Offset[3] = {-0.171457797f,    0.0722558275f,  -0.00584641751f }; /* rad/s */
+static const float IMU_Cal_Fixed_Acc_Offset[3]  = { 0.318097115f,    0.248661652f,   -0.460549176f };   /* m/s^2 */
+static const float IMU_Cal_Fixed_Acc_Scale[3]   = { 0.999542296f,    1.007286310f,    0.994732916f  };   /* 比例 */
+static const float IMU_Cal_Fixed_Gyro_Offset[3] = {-0.193535104f,    0.071889825f,   -0.005354360f }; /* rad/s */
+/* ★ 2026-10-19 六面标定结果(已采用):
+ *   本次标定的 x_out≈(-1,0,0)、y_out≈(0,-1,0)、z_out≈(0,0,1), 相对旧值绕 Z 转了 90°。
+ *   换 R 必须同时换下面三处映射(已同步修改):
+ *     INS.c        : Roll_Speed=+g[0], Pitch_Speed=-g[1]; INS.Roll=+QEKF.Pitch, INS.Pitch=-QEKF.Roll
+ *     Attitude.c   : Err[0]=+qe[1], Err[1]=-qe[2]
+ *     Control.c    : Attitude_Euler2Quat(+Target_Roll, -Target_Pitch, ...)
+ *   四处是一个整体, 单独改任一处都会让俯仰/横滚通道转 90° 或反向。 */
 static const float IMU_Cal_Fixed_Frame_R[3][3]  = {
-    {-0.0638484657f,  -0.997871995f,   0.0132223275f },
-    { 0.997933388f,   -0.0637451038f,  0.00809651893f},
-    {-0.00723643089f,  0.0137119517f,  0.999879777f  },
+    {-0.999903083f,  -0.000677173f,  -0.013907298f },
+    { 0.001104711f,  -0.999526262f,  -0.030757340f },
+    {-0.013879882f,  -0.030769721f,   0.999430120f },
 };
 /* 加载固化(或将来从 Flash 读回)的校准参数到 IMU_Cal_Data.Config。
  * 返回 1 = 成功(已应用), 0 = 无可用参数。 */
@@ -388,10 +397,11 @@ void IMU_Cal(void)
                 (uint32_t)IMU_CAL_POSE_MIN);
     IMU_CAL_LOG("STEP 2) When asked, put module FRONT face UP on a LEVEL\r\n");
     IMU_CAL_LOG("   surface and keep still (locks output z = vertical up).\r\n");
-    IMU_CAL_LOG("STEP 3) When asked, PITCH the module ~90 deg (its FRONT/head\r\n");
-    IMU_CAL_LOG("   edge goes DOWN to the table) and keep still. This fixes\r\n");
-    IMU_CAL_LOG("   the output x/y = module axes even if the chip is mounted\r\n");
-    IMU_CAL_LOG("   rotated/tilted relative to the module (no more yaw coupling).\r\n");
+    IMU_CAL_LOG("STEP 3) When asked, PITCH the module ~90 deg so its TAIL\r\n");
+    IMU_CAL_LOG("   edge goes DOWN to the table, then keep still.\r\n");
+    IMU_CAL_LOG("   ★ 约定: 用[机尾朝下](不是机头朝下) —— 该姿态下加计测到的\r\n");
+    IMU_CAL_LOG("   '竖直向上'正好指向机头, 于是输出 +x = 机头方向, +y = 左, +z = 上。\r\n");
+    IMU_CAL_LOG("   以后重新标定都按这个约定, 否则俯仰/横滚轴会多转 180°。\r\n");
 
     while (!finished)
     {
@@ -448,7 +458,7 @@ void IMU_Cal(void)
             {
                 for (i = 0; i < 3; i++) IMU_Cal_Data.RefUpRaw[i] = mean[i]; /* 参考面原始均值 */
                 IMU_CAL_LOG("[Cal] front-up captured (z vertical OK). Now PITCH the\r\n");
-                IMU_CAL_LOG("      module ~90 deg so its FRONT/head edge goes DOWN\r\n");
+                IMU_CAL_LOG("      module ~90 deg so its TAIL edge goes DOWN\r\n");
                 IMU_CAL_LOG("      to the table, then hold still...\r\n");
                 IMU_Cal_Data.CalState   = IMU_CAL_STATE_REF_FWD;
                 IMU_Cal_Data.CalPhase   = IMU_CAL_PHASE_WAIT_MOVE; /* 需先动一下再静止 */
@@ -462,7 +472,7 @@ void IMU_Cal(void)
             }
             break;
 
-        /* ---------- 阶段3: 锁定 Pitch ~90° 前向参考(输出 x/y) ---------- */
+        /* ---------- 阶段3: 锁定输出 x 轴(机尾朝下 ~90° 的参考姿态) ---------- */
         case IMU_CAL_STATE_REF_FWD:
             if (IMU_Cal_Sample_One(acc, gyr, isStatic, now, mean))
             {
@@ -496,7 +506,7 @@ void IMU_Cal(void)
                 else
                 {
                     IMU_CAL_LOG("[Cal] pitch too small / wrong pose (need ~90 deg).\r\n");
-                    IMU_CAL_LOG("      Pitch MORE (front edge down ~90 deg) & hold still.\r\n");
+                    IMU_CAL_LOG("      Pitch MORE (TAIL edge down ~90 deg) & hold still.\r\n");
                     IMU_Cal_Data.CalPhase   = IMU_CAL_PHASE_WAIT_MOVE;
                     IMU_Cal_Data.PhaseStartMs = now;
                     RefRemindMs = now;
@@ -505,7 +515,7 @@ void IMU_Cal(void)
             else if ((uint32_t)(now - RefRemindMs) >= 6000u)
             {
                 RefRemindMs = now;
-                IMU_CAL_LOG("[Cal] waiting: PITCH ~90 deg (front edge down) & still...\r\n");
+                IMU_CAL_LOG("[Cal] waiting: PITCH ~90 deg (TAIL edge down) & still...\r\n");
             }
             break;
 

@@ -18,25 +18,31 @@ static float dt = 0, t = 0;
 uint8_t ins_debug_mode = 0;
 
 /*==============================================================================
- *  陀螺滤波链(抑制电机/桨振动): 原始 -> 陷波 -> 二阶低通 ->(可选)一阶低通
+ *  陀螺滤波链(抑制电机/桨振动): 原始 -> 陷波1 -> 陷波2 -> 二阶低通 ->(可选)一阶低通
  *
- *  为什么上桨后“飘/抖”: QMI8658A 内部只是 ODR/10 ≈ 90Hz 低通, 挡不住
- *  200~450Hz 的桨/电机振动; 这部分能量会被内环 D 项和混控放大,
+ *  为什么上桨后“飘/抖”: 桨/电机振动会被内环 D 项和混控放大,
  *  表现为陀螺读数大幅波动、姿态发抖发飘。
- *  陷波只削那一个窄带, 对环路延迟的影响远小于“一味加大低通”。
+ *  陷波只削那几个窄带, 对环路延迟的影响远小于“一味加大低通”。
  *
- *  ★ INS_GYRO_NOTCH_F0 必须按实测振动主峰改:
- *    4kHz 采一份原始陀螺(建议去滤波, 把 NOTCH/LP 先关掉), 看波形周期或频谱,
- *    取最大那个峰; 采样率提到 4kHz 后 Nyquist 是 2kHz, 可以把陷波往上放到
- *    800~1500Hz, 这也是 4kHz 真正能提高带宽的地方(别再按 1kHz 时代的 200~450Hz 猜)。
- *  若频谱上有不止一个峰, 可以先按最强的那个设 Q 小一点(1~1.5)罩住一片。
+ *  ★ 实测(2026-10-19, 2kHz 采原始陀螺做 FFT): 两个共振峰在 **271Hz 和 657Hz**,
+ *    半带宽约 ±20Hz / ±30Hz -> 用两级**窄**陷波分别对准。
+ *    不用一个宽陷波罩住, 是因为 657±250 这种坑会把 250~500Hz 控制带的相位一起削掉。
+ *  ★ 换了桨/机架要重新测: 把 NOTCH/LP 先关掉、2kHz 录原始陀螺做 FFT, 取峰重填。
+ *    Nyquist 只有 1kHz, 峰高于 900Hz 的只能靠芯片 LPF(CTRL5)去压。
+ *  Q 的取法: BW = F0/Q -> Q = F0/BW
+ *     271Hz ± 20Hz(BW 40) -> Q = 6.8   (坑 251~291Hz)
+ *     657Hz ± 30Hz(BW 60) -> Q = 11    (坑 627~687Hz)
+ *  ⚠ 窄陷波只在测频谱那个转速准; 若峰随油门成比例移动, 就得换动态陷波/RPM 滤波。
  *============================================================================*/
-#define INS_FILTER_FS_HZ       4000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 4kHz) */
-#define INS_GYRO_NOTCH_EN      1u        /* 1=陷波使能(主手段)                */
-#define INS_GYRO_NOTCH_F0      408.0f    /* 陷波中心频率(Hz) ★按实测改        */
-#define INS_GYRO_NOTCH_Q       1.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
+#define INS_FILTER_FS_HZ       2000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 2kHz) */
+#define INS_GYRO_NOTCH_EN      1u        /* 1=陷波1(实测低频峰)                */
+#define INS_GYRO_NOTCH_F0      271.0f    /* 陷波1 中心频率(Hz) ★实测值          */
+#define INS_GYRO_NOTCH_Q       6.8f      /* 带宽 = F0/Q ≈ 40Hz (271±20)        */
+#define INS_GYRO_NOTCH2_EN     1u        /* 1=陷波2(实测高频峰)                */
+#define INS_GYRO_NOTCH2_F0     657.0f    /* 陷波2 中心频率(Hz) ★实测值          */
+#define INS_GYRO_NOTCH2_Q      11.0f     /* 带宽 = F0/Q ≈ 60Hz (657±30)        */
 #define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
-#define INS_GYRO_LP_FC         300.0f    /* 二阶低通截止频率(Hz)              */
+#define INS_GYRO_LP_FC         350.0f    /* 二阶低通截止频率(Hz), 延迟≈0.64ms  */
 #define INS_GYRO_FILTER_EKF    1u        /* 1=EKF 也用滤波后角速度(默认原始)  */
 
 /* 角速度反馈再串一级一阶低通(兜底): 0=关
@@ -61,6 +67,9 @@ static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态(�
 #if (INS_GYRO_NOTCH_EN == 1u)
 static Biquad_t INS_Gyro_Notch[3];
 #endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+static Biquad_t INS_Gyro_Notch2[3];
+#endif
 #if (INS_GYRO_LP_EN == 1u)
 static Biquad_t INS_Gyro_LP[3];
 #endif
@@ -81,7 +90,7 @@ void INS_Init(void)
 
     /* 末位参数 = EKF 内部对加速度计的一阶低通时间常数(s), 0 = 不过滤
      * 详见文件顶部 INS_EKF_ACCEL_LPF_TAU 的说明 */
-    IMU_QuaternionEKF_Init(10, 0.01, 100000, 1, INS_EKF_ACCEL_LPF_TAU);
+    IMU_QuaternionEKF_Init(10, 0.005, 1000000, 1, INS_EKF_ACCEL_LPF_TAU);
 
     INS.AccelLPF = 0.0085;
 
@@ -98,6 +107,9 @@ void INS_Init(void)
 #endif
 #if (INS_GYRO_NOTCH_EN == 1u)
         Biquad_Notch_Init(&INS_Gyro_Notch[i], INS_GYRO_NOTCH_F0, INS_FILTER_FS_HZ, INS_GYRO_NOTCH_Q);
+#endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+        Biquad_Notch_Init(&INS_Gyro_Notch2[i], INS_GYRO_NOTCH2_F0, INS_FILTER_FS_HZ, INS_GYRO_NOTCH2_Q);
 #endif
     }
 }
@@ -169,7 +181,10 @@ void INS_Update(void)
             gch = INS.Gyro[i] * Rad2Angle;                         /* 原始轴向, rad/s -> °/s */
 
 #if (INS_GYRO_NOTCH_EN == 1u)
-            gch = Biquad_Update(&INS_Gyro_Notch[i], gch);          /* 陷波: 削振动主峰 */
+            gch = Biquad_Update(&INS_Gyro_Notch[i], gch);          /* 陷波1: 271Hz 低频峰 */
+#endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+            gch = Biquad_Update(&INS_Gyro_Notch2[i], gch);         /* 陷波2: 657Hz 高频峰 */
 #endif
 #if (INS_GYRO_LP_EN == 1u)
             gch = Biquad_Update(&INS_Gyro_LP[i], gch);             /* 二阶低通: 压宽带残余 */
@@ -193,13 +208,13 @@ void INS_Update(void)
         INS_Gyro_F[Z] = INS_Speed_LP[2] * Angle2Rad;
 #endif
 
-        /* 给控制内环/遥测用: 芯片轴向 -> 机体系
-         * 实测(芯片是绕 Z 转 90° 装的, 所以 Roll/Pitch 轴互换且都取负):
-         *   真实 Roll  角速度 = -GyroY
-         *   真实 Pitch 角速度 = -GyroX
+        /* 给控制内环/遥测用: 输出坐标系 -> 机体系
+         * ★ 2026-10-19 换了新校准 Frame_R(相对旧的绕 Z 转了 90°), 这条映射跟着换:
+         *   真实 Roll  角速度 = +GyroX
+         *   真实 Pitch 角速度 = -GyroY
          *   真实 Yaw   角速度 = +GyroZ */
-        INS.Roll_Speed  = -INS_Speed_LP[1];
-        INS.Pitch_Speed = -INS_Speed_LP[0];
+        INS.Roll_Speed  =  INS_Speed_LP[0];
+        INS.Pitch_Speed = -INS_Speed_LP[1];
         INS.Yaw_Speed   =  INS_Speed_LP[2];
     }
 
@@ -235,8 +250,10 @@ void INS_Update(void)
 
     // 获取最终数据
     INS.Yaw = QEKF_INS.Yaw;
-    INS.Roll = -QEKF_INS.Roll;
-    INS.Pitch = -QEKF_INS.Pitch;
+    /* ★ 新 Frame_R 下 QEKF 的 Roll/Pitch 命名正好相反(与上面角速度映射一致):
+     *   Roll 取 QEKF.Pitch, Pitch 取 -QEKF.Roll */
+    INS.Roll =  QEKF_INS.Pitch;
+    INS.Pitch = -QEKF_INS.Roll;
     INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
     INS.Last_Yaw = INS.Yaw;
 

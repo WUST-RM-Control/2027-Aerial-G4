@@ -84,7 +84,7 @@
  *   出来), 却会给均值带来转速偏置, 所以这个门限要保持小。
  * ------------------------------------------------------------------ */
 #define IMU_CAL_GYRO_CAL_EN         1u      /* 1=上电后台自动校准陀螺零漂            */
-#define IMU_CAL_GYRO_CAL_SAMPLES    2000u   /* 一批静止样本数(4kHz 循环 → 约0.5s) */
+#define IMU_CAL_GYRO_CAL_SAMPLES    1000u   /* 一批静止样本数(2kHz 循环 → 约0.5s) */
 #define IMU_CAL_GYRO_CAL_SETTLE_MS  200u    /* 判定静止后先丢弃的过渡时间(ms)        */
 #define IMU_CAL_GYRO_CAL_BUDGET_MS  5000u   /* 总时间预算: 超时则放弃(ms)            */
 #define IMU_CAL_GYRO_CAL_RETRY_MAX  5u      /* 质检不过最多重试几批                 */
