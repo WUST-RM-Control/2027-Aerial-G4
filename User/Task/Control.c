@@ -22,7 +22,7 @@
 /*===| 功能开关 |===*/
 #define CONTROL_USE_QUATERNION   1u   /* 1=四元数姿态误差(无奇异)  0=欧拉角相减 */
 #define CONTROL_THROTTLE_SQUARE  1u   /* 1=杆量线性映射到占空比     0=线性映射到推力 */
-#define CONTROL_TILT_COMP        0    /* 倾斜油门补偿 */
+#define CONTROL_TILT_COMP        1    /* 倾斜油门补偿 */
 #define CONTROL_V_COMP           1    /* 电压补偿 */
 #define CONTROL_AUTO_ROLL        0    /* 一键滚转(SD 触发) */
 
@@ -57,8 +57,8 @@ void Control_Set_Thrust(uint8_t Fan_ID, float Thrust_100)
 static void Control_PID_Init(void)
 {
     /* 高度环: 高度 -> 速度 -> 推力(悬停前馈见 Control_RateLoop) */
-    PID_Init(&Control.PID_P_Height, 0.8f,  0.0f,   0.05f, 0.0f,  0.0f,  300.0f);
-    PID_Init(&Control.PID_S_Height, 0.02f, 0.003f, 0.0f,  0.0f, 10.0f,   30.0f);
+    PID_Init(&Control.PID_P_Height, 1.0f,  0.0f,   0.01f, 0.0f,  0.0f,  500.0f);
+    PID_Init(&Control.PID_S_Height, 0.015f, 0.02f, 0.0f,  0.0f, 5.0f,   20.0f);
 
     /* 角度外环(deg 误差 -> deg/s 期望角速度), 只用 P */
     PID_Init(&Control.PID_P_Roll,  15.0f, 0.0f, 0.01f, 0.0f, 0.0f, 500.0f);
@@ -66,9 +66,9 @@ static void Control_PID_Init(void)
     PID_Init(&Control.PID_P_Yaw,   20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 500.0f);
 
     /* 角速度内环(deg/s -> 推力差动), 线性区 = 40/0.15 约 267 deg/s */
-    PID_Init(&Control.PID_S_Roll,  0.2f,  0.0f, 0.01f, 0.0f, 10.0f, 30.0f);
-    PID_Init(&Control.PID_S_Pitch, 0.2f,  0.0f, 0.01f, 0.0f, 10.0f, 30.0f);
-    PID_Init(&Control.PID_S_Yaw,   0.1f,  0.0f, 0.0f, 0.0f,  5.0f, 30.0f);
+    PID_Init(&Control.PID_S_Roll,  0.15f,  0.0f, 0.0f, 0.0f, 10.0f, 50.0f);
+    PID_Init(&Control.PID_S_Pitch, 0.15f,  0.0f, 0.0f, 0.0f, 10.0f, 50.0f);
+    PID_Init(&Control.PID_S_Yaw,   0.1f,  0.0f, 0.0f, 0.0f,  5.0f, 40.0f);
     PID_Set_D_LPF(&Control.PID_S_Roll,  30.0f);     /* D 项低通(Hz) */
     PID_Set_D_LPF(&Control.PID_S_Pitch, 30.0f);
     PID_Set_D_LPF(&Control.PID_S_Yaw,   30.0f);
@@ -172,7 +172,8 @@ static void Control_UpdateTarget(float Thr, float Yw, float Pt, float Rl)
         break;
 
     case Control_Mode_Level_Height:             /* 定高 */
-        Control.Target_Height += Control_Dt * Remote.Right_Y * 1000.0f;
+        Control.Target_Height += Control_Dt * Remote.Right_Y * 250.0f;
+        Limit_float(&Control.Target_Height,  Control.Feedback_P_Height + 250,  Control.Feedback_P_Height - 250);
         Control.Target_Pitch = -Pt * 60.0f;
         Control.Target_Roll  =  Rl * 60.0f;
         Control.Target_Yaw  -= Control_Dt * Yw * 90.0f;
@@ -270,8 +271,9 @@ static void Control_AttitudeLoop(void)
     const float K_Ff = 0.0f;        /* 摇杆前馈系数: 0=不用, 0.3~1 打杆更跟手 */
 
     /* 目标四元数必须与陀螺同一套轴向(见 Attitude_QuatError 的说明):
-     *   绕芯片X = -Target_Pitch, 绕芯片Y = -Target_Roll, 绕芯片Z = +Target_Yaw */
-    Attitude_Euler2Quat(-Control.Target_Pitch, -Control.Target_Roll,
+     *   绕输出X = +Target_Roll, 绕输出Y = -Target_Pitch, 绕输出Z = +Target_Yaw
+     * ★ 2026-10-19 换新 Frame_R 后 here 的 Roll/Pitch 参数位互换 */
+    Attitude_Euler2Quat(Control.Target_Roll, -Control.Target_Pitch,
                         Control.Target_Yaw, Control.Target_Q);
 
 #if (CONTROL_USE_QUATERNION == 1u)
@@ -341,7 +343,7 @@ static void Control_RateLoop(void)
     if ((Control.Control_Mode == Control_Mode_Level) || (Control.Control_Mode == Control_Mode_Acro))
         Control.T_Height = Control.Target_Height;
     else
-        Control.T_Height = 50.0f + Control.PID_S_Height.Output;    /* 50 = 悬停前馈 */
+        Control.T_Height = 25.0f + Control.PID_S_Height.Output;    /* 15 = 悬停前馈 */
     Limit_float(&Control.T_Height, 100.0f, 0.0f);
 
     Control.T_Roll  = Control.PID_S_Roll.Output;
@@ -441,41 +443,45 @@ static void Control_Output(void)
 }
 
 /*============================================================================
- *  任务主循环 1kHz
+ *  初始化(只跑一次, 由 Flight_Task 在 4kHz 节拍启动前调用)
  *===========================================================================*/
-void Control_Task(void *argument)
+void Control_Init(void)
 {
-    float Thr, Yw, Pt, Rl;
-
-    osDelay(100);
     Control.Target_Yaw = INS.YawTotalAngle;
     Control.V_Comp     = 1.0f;
 
     Control_PID_Init();
     DShot_Init();
 
+    /* 预置 DWT 计时起点: 否则第一拍 dt 会是"上电到现在"的一个大值 */
     DWT_GetDeltaT(&Control_DWT_Count);
-    for (;;)
-    {
-        Control_Dt = DWT_GetDeltaT(&Control_DWT_Count);
+}
 
-        Control_UpdateEnable();
-        Control_UpdateMode();
-        Control_ReadStick(&Thr, &Yw, &Pt, &Rl);
-        Control_UpdateTarget(Thr, Yw, Pt, Rl);
-        Control_UpdateFeedback();
+/*============================================================================
+ *  单拍控制(4kHz = 250us, 由 Flight_Task 在 TIM6 节拍里调用, 内部不延时)
+ *    DShot 也跟着每拍发一帧 -> 输出 4kHz
+ *===========================================================================*/
+void Control_Update(void)
+{
+    float Thr, Yw, Pt, Rl;
+
+    Control_Dt = DWT_GetDeltaT(&Control_DWT_Count);
+
+    Control_UpdateEnable();
+    Control_UpdateMode();
+    Control_ReadStick(&Thr, &Yw, &Pt, &Rl);
+    Control_UpdateTarget(Thr, Yw, Pt, Rl);
+    Control_UpdateFeedback();
 
 #if CONTROL_AUTO_ROLL
-        Control_AutoRollUpdate();
+    Control_AutoRollUpdate();
 #endif
 
-        Control_PositionLoop();
-        Control_AttitudeLoop();
-        Control_RateLoop();
-        Control_Mixer();
-        Control_Output();
+    Control_PositionLoop();
+    Control_AttitudeLoop();
+    Control_RateLoop();
+    Control_Mixer();
+    Control_Output();
 
-        DShot_Send();       /* 4 路同帧, 电调靠连续收帧判断信号正常 */
-        osDelay(1);
-    }
+    DShot_Send();       /* 4 路同帧, 电调靠连续收帧判断信号正常 */
 }

@@ -23,6 +23,9 @@ void VL53L1_Init(void);
 // 调用方应用"两次新样本的时间差"(约33ms)做差分, 不能用任务周期(10ms)
 uint8_t VL53L1_Read_Data(void);
 
+/* 新样本计数(调试用): 读两次求差即可得到实际的 TOF 更新率 */
+extern volatile uint32_t VL53L1_New_Count;
+
 /* ---- 以下为移植自文档 vl53l1.c/h 的原始接口 ---- */
 uint16_t vl53l1_readdistance(void);   // 原始 readdistance 接口
 uint16_t getDistance(void);           // 读 0x0096 距离(mm); >4000 返回 65535

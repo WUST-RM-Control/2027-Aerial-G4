@@ -18,24 +18,31 @@ static float dt = 0, t = 0;
 uint8_t ins_debug_mode = 0;
 
 /*==============================================================================
- *  陀螺滤波链(抑制电机/桨振动): 原始 -> 陷波 -> 二阶低通 ->(可选)一阶低通
+ *  陀螺滤波链(抑制电机/桨振动): 原始 -> 陷波1 -> 陷波2 -> 二阶低通 ->(可选)一阶低通
  *
- *  为什么上桨后“飘/抖”: QMI8658A 内部只是 ODR/10 ≈ 90Hz 低通, 挡不住
- *  200~450Hz 的桨/电机振动; 这部分能量会被内环 D 项和混控放大,
+ *  为什么上桨后“飘/抖”: 桨/电机振动会被内环 D 项和混控放大,
  *  表现为陀螺读数大幅波动、姿态发抖发飘。
- *  陷波只削那一个窄带, 对环路延迟的影响远小于“一味加大低通”。
+ *  陷波只削那几个窄带, 对环路延迟的影响远小于“一味加大低通”。
  *
- *  ★ INS_GYRO_NOTCH_F0 必须按实测振动主峰改:
- *    1kHz 采一份原始陀螺(建议去滤波, 把 NOTCH/LP 先关掉), 看波形周期或频谱,
- *    取最大那个峰; 常见 2~3 寸桨在 200~400Hz。
- *  若频谱上有不止一个峰, 可以先按最强的那个设 Q 小一点(1~1.5)罩住一片。
+ *  ★ 实测(2026-10-19, 2kHz 采原始陀螺做 FFT): 两个共振峰在 **271Hz 和 657Hz**,
+ *    半带宽约 ±20Hz / ±30Hz -> 用两级**窄**陷波分别对准。
+ *    不用一个宽陷波罩住, 是因为 657±250 这种坑会把 250~500Hz 控制带的相位一起削掉。
+ *  ★ 换了桨/机架要重新测: 把 NOTCH/LP 先关掉、2kHz 录原始陀螺做 FFT, 取峰重填。
+ *    Nyquist 只有 1kHz, 峰高于 900Hz 的只能靠芯片 LPF(CTRL5)去压。
+ *  Q 的取法: BW = F0/Q -> Q = F0/BW
+ *     271Hz ± 20Hz(BW 40) -> Q = 6.8   (坑 251~291Hz)
+ *     657Hz ± 30Hz(BW 60) -> Q = 11    (坑 627~687Hz)
+ *  ⚠ 窄陷波只在测频谱那个转速准; 若峰随油门成比例移动, 就得换动态陷波/RPM 滤波。
  *============================================================================*/
-#define INS_FILTER_FS_HZ       1000.0f   /* 滤波器采样率(标称=控制周期 1kHz)   */
-#define INS_GYRO_NOTCH_EN      1u        /* 1=陷波使能(主手段)                */
-#define INS_GYRO_NOTCH_F0      408.0f    /* 陷波中心频率(Hz) ★按实测改        */
-#define INS_GYRO_NOTCH_Q       1.0f      /* Q: 越大越窄; 不确定时取 1~2 宽一点 */
+#define INS_FILTER_FS_HZ       2000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 2kHz) */
+#define INS_GYRO_NOTCH_EN      1u        /* 1=陷波1(实测低频峰)                */
+#define INS_GYRO_NOTCH_F0      271.0f    /* 陷波1 中心频率(Hz) ★实测值          */
+#define INS_GYRO_NOTCH_Q       6.8f      /* 带宽 = F0/Q ≈ 40Hz (271±20)        */
+#define INS_GYRO_NOTCH2_EN     1u        /* 1=陷波2(实测高频峰)                */
+#define INS_GYRO_NOTCH2_F0     657.0f    /* 陷波2 中心频率(Hz) ★实测值          */
+#define INS_GYRO_NOTCH2_Q      11.0f     /* 带宽 = F0/Q ≈ 60Hz (657±30)        */
 #define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
-#define INS_GYRO_LP_FC         150.0f    /* 二阶低通截止频率(Hz)              */
+#define INS_GYRO_LP_FC         350.0f    /* 二阶低通截止频率(Hz), 延迟≈0.64ms  */
 #define INS_GYRO_FILTER_EKF    1u        /* 1=EKF 也用滤波后角速度(默认原始)  */
 
 /* 角速度反馈再串一级一阶低通(兜底): 0=关
@@ -50,12 +57,18 @@ uint8_t ins_debug_mode = 0;
  *   姿态退化成纯陀螺积分。表现就是: 电机一抖欧拉角大幅漂移, 停机后又自己回正。
  * 取 0.01s ≈ 16Hz: 保留重力(直流)方向, 压掉几十~几百 Hz 的振动,
  *   残差回到阈值内, 振动期间加速度计修正照常生效。
+ * ★ 4kHz 下改成 0.005 会让 200Hz 以上的振动多漏一倍进 EKF(实测上桨后
+ *   pitch/roll 偏十几度就是这条链被踩中), 所以这里保持 0.01。
+ *   需更快跟随倾斜时可降到 0.005, 但同时必须把 QEKF_ADAPT_GAIN_MIN 抬上去。
  * 注意: 它与 INS.AccelLPF(只用于算运动加速度)无关, 别搞混。 */
-#define INS_EKF_ACCEL_LPF_TAU  0.005f
+#define INS_EKF_ACCEL_LPF_TAU  0.010f
 
 static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态(芯片原始轴向) [0]=GyroX [1]=GyroY [2]=GyroZ */
 #if (INS_GYRO_NOTCH_EN == 1u)
 static Biquad_t INS_Gyro_Notch[3];
+#endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+static Biquad_t INS_Gyro_Notch2[3];
 #endif
 #if (INS_GYRO_LP_EN == 1u)
 static Biquad_t INS_Gyro_LP[3];
@@ -77,7 +90,7 @@ void INS_Init(void)
 
     /* 末位参数 = EKF 内部对加速度计的一阶低通时间常数(s), 0 = 不过滤
      * 详见文件顶部 INS_EKF_ACCEL_LPF_TAU 的说明 */
-    IMU_QuaternionEKF_Init(10, 0.008, 100000, 1, INS_EKF_ACCEL_LPF_TAU);
+    IMU_QuaternionEKF_Init(10, 0.005, 1000000, 1, INS_EKF_ACCEL_LPF_TAU);
 
     INS.AccelLPF = 0.0085;
 
@@ -95,12 +108,18 @@ void INS_Init(void)
 #if (INS_GYRO_NOTCH_EN == 1u)
         Biquad_Notch_Init(&INS_Gyro_Notch[i], INS_GYRO_NOTCH_F0, INS_FILTER_FS_HZ, INS_GYRO_NOTCH_Q);
 #endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+        Biquad_Notch_Init(&INS_Gyro_Notch2[i], INS_GYRO_NOTCH2_F0, INS_FILTER_FS_HZ, INS_GYRO_NOTCH2_Q);
+#endif
     }
 }
 
 
 
-void INS_Task(void)
+/*============================================================================
+ *  INS 初始化(只跑一次, 由 Flight_Task 调用)
+ *===========================================================================*/
+void INS_Init_All(void)
 {
     INS_Init();
     QMI8658A_Init();
@@ -112,121 +131,134 @@ void INS_Task(void)
         IMU_Cal();
     }
 
-    // 上电陀螺零漂校准: 改为后台运行(见主循环里的 IMU_Cal_Gyro_Bias_Update),
-    // 不再在这里阻塞等待静止, 避免上电时被搬动/振动就把任务卡在初始化里。
+    // 上电陀螺零漂校准: 改为后台运行(见 INS_Update 里的 IMU_Cal_Gyro_Bias_Update),
+    // 不再阻塞等待静止, 避免上电时被搬动/振动就把初始化卡住。
 
-    for(;;)
+    /* 预置 DWT 计时起点: 否则第一拍 dt 会是"上电到现在"的一个大值 */
+    DWT_GetDeltaT(&INS_DWT_Count);
+}
+
+/*============================================================================
+ *  一拍姿态解算(4kHz, 由 Flight_Task 在 TIM6 节拍里调用, 内部不再自带延时)
+ *===========================================================================*/
+void INS_Update(void)
+{
+    const float gravity[3] = {0, 0, 9.8f};
+
+    dt = DWT_GetDeltaT(&INS_DWT_Count);
+
+    // ins update
+    IMU_Cal_Get_Calibrated_Data(INS.Accel, INS.Gyro);   // 标定完成后改回此行即可
+
+    // 陀螺零漂后台校准: 用本帧刚读到的原始数据累计, 非阻塞(静止约 0.5s 后生效)
+    // 参数见 IMU_Cal.h 的 IMU_CAL_GYRO_CAL_*; 也可调 IMU_Cal_Gyro_Bias_Restart() 重来
+    IMU_Cal_Gyro_Bias_Update();
+
+    /* 陀螺零漂标定完成的瞬间响一声提示(检测状态机跳到 DONE 的上升沿)。
+     * 只设请求, 具体播放在 Buzzer_Task 里做, 这里不会被阻塞; 重新标定成功
+     * 也会再响一次(GIVEUP/等待中都不会响) */
     {
-        const float gravity[3] = {0, 0, 9.8f};
-        dt = DWT_GetDeltaT(&INS_DWT_Count);
-        
-        // ins update
-        IMU_Cal_Get_Calibrated_Data(INS.Accel, INS.Gyro);   // 标定完成后改回此行即可
+        static uint8_t Gyro_Cal_State_Last = IMU_CAL_GYROCAL_IDLE;
+        uint8_t Gyro_Cal_State_Now = IMU_Cal_Data.GyroCalState;
 
-        // 陀螺零漂后台校准: 用本帧刚读到的原始数据累计, 非阻塞(静止约 0.5s 后生效)
-        // 参数见 IMU_Cal.h 的 IMU_CAL_GYRO_CAL_*; 也可调 IMU_Cal_Gyro_Bias_Restart() 重来
-        IMU_Cal_Gyro_Bias_Update();
-
-        /* 陀螺零漂标定完成的瞬间响一声提示(检测状态机跳到 DONE 的上升沿)。
-         * 只设请求, 具体播放在 Buzzer_Task 里做, 这里不会被阻塞; 重新标定成功
-         * 也会再响一次(GIVEUP/等待中都不会响) */
+        if (Gyro_Cal_State_Now != Gyro_Cal_State_Last)
         {
-            static uint8_t Gyro_Cal_State_Last = IMU_CAL_GYROCAL_IDLE;
-            uint8_t Gyro_Cal_State_Now = IMU_Cal_Data.GyroCalState;
+            if (Gyro_Cal_State_Now == IMU_CAL_GYROCAL_DONE)
+                Buzzer_Queue_SoundEffect(Buzzer_SoundEffect_Gyro_Cal_Done);
 
-            if (Gyro_Cal_State_Now != Gyro_Cal_State_Last)
-            {
-                if (Gyro_Cal_State_Now == IMU_CAL_GYROCAL_DONE)
-                    Buzzer_Queue_SoundEffect(Buzzer_SoundEffect_Gyro_Cal_Done);
-
-                Gyro_Cal_State_Last = Gyro_Cal_State_Now;
-            }
+            Gyro_Cal_State_Last = Gyro_Cal_State_Now;
         }
+    }
 
-        /*=== 陀螺滤波: 原始 -> 陷波 -> 二阶低通 ->(可选)一阶低通 ===
-         * 滤波全程在“芯片原始轴向”上做; 轴向映射只在最后赋给 INS.*_Speed 时做一次,
-         * 这样给 EKF 的那份永远是原始轴向(见 INS_GYRO_FILTER_EKF)。 */
+    /*=== 陀螺滤波: 原始 -> 陷波 -> 二阶低通 ->(可选)一阶低通 ===
+     * 滤波全程在“芯片原始轴向”上做; 轴向映射只在最后赋给 INS.*_Speed 时做一次,
+     * 这样给 EKF 的那份永远是原始轴向(见 INS_GYRO_FILTER_EKF)。 */
+    {
+        float gch;
+
+        for (uint8_t i = 0; i < 3; i++)
         {
-            float gch;
-
-            for (uint8_t i = 0; i < 3; i++)
-            {
-                gch = INS.Gyro[i] * Rad2Angle;                         /* 原始轴向, rad/s -> °/s */
+            gch = INS.Gyro[i] * Rad2Angle;                         /* 原始轴向, rad/s -> °/s */
 
 #if (INS_GYRO_NOTCH_EN == 1u)
-                gch = Biquad_Update(&INS_Gyro_Notch[i], gch);          /* 陷波: 削振动主峰 */
+            gch = Biquad_Update(&INS_Gyro_Notch[i], gch);          /* 陷波1: 271Hz 低频峰 */
+#endif
+#if (INS_GYRO_NOTCH2_EN == 1u)
+            gch = Biquad_Update(&INS_Gyro_Notch2[i], gch);         /* 陷波2: 657Hz 高频峰 */
 #endif
 #if (INS_GYRO_LP_EN == 1u)
-                gch = Biquad_Update(&INS_Gyro_LP[i], gch);             /* 二阶低通: 压宽带残余 */
+            gch = Biquad_Update(&INS_Gyro_LP[i], gch);             /* 二阶低通: 压宽带残余 */
 #endif
 
-                if (INS_ANG_SPEED_TAU > 0.0f)                          /* 可选一阶低通 */
-                {
-                    float alpha = dt / (INS_ANG_SPEED_TAU + dt);
-                    INS_Speed_LP[i] += (gch - INS_Speed_LP[i]) * alpha;
-                }
-                else
-                {
-                    INS_Speed_LP[i] = gch;
-                }
+            if (INS_ANG_SPEED_TAU > 0.0f)                          /* 可选一阶低通 */
+            {
+                float alpha = dt / (INS_ANG_SPEED_TAU + dt);
+                INS_Speed_LP[i] += (gch - INS_Speed_LP[i]) * alpha;
             }
-
-#if (INS_GYRO_FILTER_EKF == 1u)
-            /* 给 EKF 用: 滤波后角速度, 保持芯片原始轴向(rad/s), 不参与下面的符号翻转 */
-            INS_Gyro_F[X] = INS_Speed_LP[0] * Angle2Rad;
-            INS_Gyro_F[Y] = INS_Speed_LP[1] * Angle2Rad;
-            INS_Gyro_F[Z] = INS_Speed_LP[2] * Angle2Rad;
-#endif
-
-            /* 给控制内环/遥测用: 芯片轴向 -> 机体系
-             * 实测(芯片是绕 Z 转 90° 装的, 所以 Roll/Pitch 轴互换且都取负):
-             *   真实 Roll  角速度 = -GyroY
-             *   真实 Pitch 角速度 = -GyroX
-             *   真实 Yaw   角速度 = +GyroZ */
-            INS.Roll_Speed  = -INS_Speed_LP[1];
-            INS.Pitch_Speed = -INS_Speed_LP[0];
-            INS.Yaw_Speed   =  INS_Speed_LP[2];
+            else
+            {
+                INS_Speed_LP[i] = gch;
+            }
         }
 
-        // 计算重力加速度矢量和b系的XY两轴的夹角,可用作功能扩展,本demo暂时没用
-        INS.atanxz = -atan2f(INS.Accel[X], INS.Accel[Z]) * Rad2Angle;
-        INS.atanyz = atan2f(INS.Accel[Y], INS.Accel[Z]) * Rad2Angle;
-
-        // 核心函数,EKF更新四元数
 #if (INS_GYRO_FILTER_EKF == 1u)
-        IMU_QuaternionEKF_Update(INS_Gyro_F[X], INS_Gyro_F[Y], INS_Gyro_F[Z], INS.Accel[X], INS.Accel[Y], INS.Accel[Z], dt);
-#else
-        IMU_QuaternionEKF_Update(INS.Gyro[X], INS.Gyro[Y], INS.Gyro[Z], INS.Accel[X], INS.Accel[Y], INS.Accel[Z], dt);
+        /* 给 EKF 用: 滤波后角速度, 保持芯片原始轴向(rad/s), 不参与下面的符号翻转 */
+        INS_Gyro_F[X] = INS_Speed_LP[0] * Angle2Rad;
+        INS_Gyro_F[Y] = INS_Speed_LP[1] * Angle2Rad;
+        INS_Gyro_F[Z] = INS_Speed_LP[2] * Angle2Rad;
 #endif
 
-        memcpy(INS.q, QEKF_INS.q, sizeof(QEKF_INS.q));
+        /* 给控制内环/遥测用: 输出坐标系 -> 机体系
+         * ★ 2026-10-19 换了新校准 Frame_R(相对旧的绕 Z 转了 90°), 这条映射跟着换:
+         *   真实 Roll  角速度 = +GyroX
+         *   真实 Pitch 角速度 = -GyroY
+         *   真实 Yaw   角速度 = +GyroZ */
+        INS.Roll_Speed  =  INS_Speed_LP[0];
+        INS.Pitch_Speed = -INS_Speed_LP[1];
+        INS.Yaw_Speed   =  INS_Speed_LP[2];
+    }
 
-        // 机体系基向量转换到导航坐标系，本例选取惯性系为导航系
-        BodyFrameToEarthFrame(xb, INS.xn, INS.q);
-        BodyFrameToEarthFrame(yb, INS.yn, INS.q);
-        BodyFrameToEarthFrame(zb, INS.zn, INS.q);
+    // 计算重力加速度矢量和b系的XY两轴的夹角,可用作功能扩展,本demo暂时没用
+    INS.atanxz = -atan2f(INS.Accel[X], INS.Accel[Z]) * Rad2Angle;
+    INS.atanyz = atan2f(INS.Accel[Y], INS.Accel[Z]) * Rad2Angle;
 
-        // 将重力从导航坐标系n转换到机体系b,随后根据加速度计数据计算运动加速度
+    // 核心函数,EKF更新四元数
+#if (INS_GYRO_FILTER_EKF == 1u)
+    IMU_QuaternionEKF_Update(INS_Gyro_F[X], INS_Gyro_F[Y], INS_Gyro_F[Z], INS.Accel[X], INS.Accel[Y], INS.Accel[Z], dt);
+#else
+    IMU_QuaternionEKF_Update(INS.Gyro[X], INS.Gyro[Y], INS.Gyro[Z], INS.Accel[X], INS.Accel[Y], INS.Accel[Z], dt);
+#endif
+
+    memcpy(INS.q, QEKF_INS.q, sizeof(QEKF_INS.q));
+
+    // 机体系基向量转换到导航坐标系，本例选取惯性系为导航系
+    BodyFrameToEarthFrame(xb, INS.xn, INS.q);
+    BodyFrameToEarthFrame(yb, INS.yn, INS.q);
+    BodyFrameToEarthFrame(zb, INS.zn, INS.q);
+
+    // 将重力从导航坐标系n转换到机体系b,随后根据加速度计数据计算运动加速度
+    {
         float gravity_b[3];
+
         EarthFrameToBodyFrame(gravity, gravity_b, INS.q);
         for (uint8_t i = 0; i < 3; i++) // 同样过一个低通滤波
         {
             INS.MotionAccel_b[i] = (INS.Accel[i] - gravity_b[i]) * dt / (INS.AccelLPF + dt) + INS.MotionAccel_b[i] * INS.AccelLPF / (INS.AccelLPF + dt);
         }
         BodyFrameToEarthFrame(INS.MotionAccel_b, INS.MotionAccel_n, INS.q); // 转换回导航系n
-
-        // 获取最终数据
-        INS.Yaw = QEKF_INS.Yaw;
-        INS.Roll = -QEKF_INS.Roll;
-        INS.Pitch = -QEKF_INS.Pitch;
-        INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
-        INS.Last_Yaw = INS.Yaw;
-
-        /* 角速度已在上面“陷波->低通”那一步算好(INS.Roll/Pitch/Yaw_Speed),
-         * 这里不再重复滤波 */
-
-        osDelay(1);
     }
+
+    // 获取最终数据
+    INS.Yaw = QEKF_INS.Yaw;
+    /* ★ 新 Frame_R 下 QEKF 的 Roll/Pitch 命名正好相反(与上面角速度映射一致):
+     *   Roll 取 QEKF.Pitch, Pitch 取 -QEKF.Roll */
+    INS.Roll =  QEKF_INS.Pitch;
+    INS.Pitch = -QEKF_INS.Roll;
+    INS.YawTotalAngle = QEKF_INS.YawTotalAngle;
+    INS.Last_Yaw = INS.Yaw;
+
+    /* 角速度已在上面“陷波->低通”那一步算好(INS.Roll/Pitch/Yaw_Speed),
+     * 这里不再重复滤波 */
 }
 
 

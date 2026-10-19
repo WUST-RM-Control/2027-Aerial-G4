@@ -34,7 +34,9 @@
  *   (负增益 = 反向修正 = 发散), 所以下面必顶把它夹到 [MIN, 1]。
  *═════════════════════════════════════════════════════════════ */
 #define QEKF_CHISQ_REJECT_EN    0u
-#define QEKF_ADAPT_GAIN_MIN     0.1f
+#define QEKF_ADAPT_GAIN_EN      1u      /* 0 = 不做自适应衰减, 加计修正恒为满增益 */
+#define QEKF_ADAPT_GAIN_MIN     0.2f
+#define QEKF_CHISQ_GATE_RAD     0.1f    /* 门限对应的“重力方向残差”(rad): 0.1 rad ≈ 5.7° */
 
 QEKF_INS_t QEKF_INS;
 
@@ -73,7 +75,14 @@ void IMU_QuaternionEKF_Init(float process_noise1, float process_noise2, float me
     QEKF_INS.Q1 = process_noise1;
     QEKF_INS.Q2 = process_noise2;
     QEKF_INS.R = measure_noise;
-    QEKF_INS.ChiSquareTestThreshold = 1e-8;
+    /* 卡方门限必须跟 R 联动(rk = r'·S⁻¹·r, S≈R):
+     *   阈值 = (方向残差)² / R。
+     *   原来固定 1e-8, 在 R=1e5 下只相当于 1.8° —— 上桨后加计方向抖动
+     *   轻松超过 2°, AdaptiveGainScale 就被卡到下限(0.1), 加速度计修正
+     *   只剩 1/10, 姿态退化成“陀螺积分 + 很小回拉” → pitch/roll 被振动
+     *   整流出的零偏拖到十几度(停桨才回正)。
+     *   现改为「残差 5.7° 才到门限」, 正常振动不会触发衰减。 */
+    QEKF_INS.ChiSquareTestThreshold = (QEKF_CHISQ_GATE_RAD * QEKF_CHISQ_GATE_RAD) / measure_noise;
     QEKF_INS.ConvergeFlag = 0;
     QEKF_INS.ErrorCount = 0;
     QEKF_INS.UpdateCount = 0;
@@ -428,6 +437,17 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
     else // if divergent or rk is not that big/acceptable,use adaptive gain
 #endif
     {
+#if (QEKF_ADAPT_GAIN_EN == 0u)
+        /* ★ 振动实测(2026-10-19, EmberProbe 采样): 桨一转, 阈值设多大都没用 ——
+         *   AdaptiveGainScale 一直坐在下限 0.2, 加计修正只剩 1/5, 而陀螺被振动
+         *   整流出约 1.9°/s 的直流分量, 于是 pitch 以 ~1.1°/s 的速度漂
+         *   (5s 内 3.7° -> 9.2°), 停桨后 Gain 回到 1 又自己回正。
+         *   所以这里直接把自适应衰减关掉: 加计修正恒为满增益,
+         *   同等条件下漂移被压到 ~1°/s * 0.6s ≈ 1°, 量级降一个数量级。
+         *   代价: 持续线加速度(手动大机动)时, 加计方向会被拉扯, 姿态跟着类几个度;
+         *   若需要回去, 把 QEKF_ADAPT_GAIN_EN 改回 1 并调 QEKF_ADAPT_GAIN_MIN。 */
+        QEKF_INS.AdaptiveGainScale = 1.0f;
+#else
         // scale adaptive,rk越小则增益越大,否则更相信预测值
         if (QEKF_INS.ChiSquare_Data[0] > 0.1f * QEKF_INS.ChiSquareTestThreshold && QEKF_INS.ConvergeFlag)
         {
@@ -449,6 +469,7 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf)
         {
             QEKF_INS.AdaptiveGainScale = QEKF_ADAPT_GAIN_MIN;
         }
+#endif
 #endif
 
         QEKF_INS.ErrorCount = 0;
