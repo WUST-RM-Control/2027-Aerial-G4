@@ -23,8 +23,8 @@ void Communicate_Task(void *argument)
 //        Vofa_JF_Add_Data(5, INS.YawTotalAngle);
 //        Vofa_JF_Add_Data(6, INS.Roll);
 //        Vofa_JF_Add_Data(7, INS.Pitch);
-//        Vofa_JF_Add_Data(8, Sensor.Height_mm);
-//        Vofa_JF_Add_Data(9, Sensor.Height_Speed_mm);
+       Vofa_JF_Add_Data(8, Sensor.Height_mm);
+       Vofa_JF_Add_Data(9, Sensor.Height_Speed_mm);
 //        Vofa_JF_Add_Data(10, Sensor.Vel_X_mm);
 //        Vofa_JF_Add_Data(11, Sensor.Vel_Y_mm);
 //        Vofa_JF_Add_Data(12, PMW3901.SQUAL);
@@ -40,11 +40,11 @@ void Communicate_Task(void *argument)
 //        Vofa_JF_Add_Data(7, Control.T_Yaw);
         
         
-        Vofa_JF_Add_Data(0, Control.PID_P_Height.Target);
-        Vofa_JF_Add_Data(1, Control.PID_P_Height.Feedback);
-        Vofa_JF_Add_Data(2, Control.PID_S_Height.Target);
-        Vofa_JF_Add_Data(3, Control.PID_S_Height.Feedback);
-        Vofa_JF_Add_Data(4, Control.PID_S_Height.Output);
+        // Vofa_JF_Add_Data(0, Control.PID_P_Height.Target);
+        // Vofa_JF_Add_Data(1, Control.PID_P_Height.Feedback);
+        // Vofa_JF_Add_Data(2, Control.PID_S_Height.Target);
+        // Vofa_JF_Add_Data(3, Control.PID_S_Height.Feedback);
+        // Vofa_JF_Add_Data(4, Control.PID_S_Height.Output);
 //                                         
 //        Vofa_JF_Add_Data(6, Control.PID_S_Pitch.K_Output);
 //        Vofa_JF_Add_Data(7, Control.PID_S_Pitch.I_Output);

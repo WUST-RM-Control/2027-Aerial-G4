@@ -26,6 +26,13 @@ uint8_t VL53L1_Read_Data(void);
 /* 新样本计数(调试用): 读两次求差即可得到实际的 TOF 更新率 */
 extern volatile uint32_t VL53L1_New_Count;
 
+/* ---- 调试量: EmberProbe 直接读写, 不需要改代码/重烧 ---- */
+extern volatile uint32_t VL53L1_Dbg_InterMeas;   /* 0x006C 测量间隔计数值(≈39.77 counts/ms), 写后立即生效 */
+extern volatile uint16_t VL53L1_Dbg_RangeStatus; /* 0x0089 低5位, 0=正常 */
+extern volatile uint16_t VL53L1_Dbg_SignalRate;  /* 0x0098 峰值信号率, 9.7 定点(MCPS=值/128) */
+extern volatile uint16_t VL53L1_Dbg_AmbientRate; /* 0x0090 环境光率, 9.7 定点(MCPS=值/128) */
+extern volatile uint16_t VL53L1_Dbg_EffSpads;    /* 0x008C DSS 有效 SPAD, 8.8 定点(个数=值/256) */
+
 /* ---- 以下为移植自文档 vl53l1.c/h 的原始接口 ---- */
 uint16_t vl53l1_readdistance(void);   // 原始 readdistance 接口
 uint16_t getDistance(void);           // 读 0x0096 距离(mm); >4000 返回 65535

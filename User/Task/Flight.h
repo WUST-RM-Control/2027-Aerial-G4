@@ -21,7 +21,7 @@
 #include "main.h"
 
 /* 飞行主循环频率: TIM6 = 170MHz/(169+1)/(499+1) = 2kHz, 与 tim.c 的 MX_TIM6_Init 对应 */
-#define FLIGHT_LOOP_HZ      4000u
+#define FLIGHT_LOOP_HZ      2000u
 #define FLIGHT_LOOP_DT      (1.0f / (float)FLIGHT_LOOP_HZ)     /* 0.5ms */
 
 /* ISR 侧: 只发信号量, 不做任何计算(在 TIM6_DAC_IRQHandler 里调用) */
