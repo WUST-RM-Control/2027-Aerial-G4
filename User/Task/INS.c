@@ -34,7 +34,7 @@ uint8_t ins_debug_mode = 0;
  *     657Hz ± 30Hz(BW 60) -> Q = 11    (坑 627~687Hz)
  *  ⚠ 窄陷波只在测频谱那个转速准; 若峰随油门成比例移动, 就得换动态陷波/RPM 滤波。
  *============================================================================*/
-#define INS_FILTER_FS_HZ       2000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 2kHz) */
+#define INS_FILTER_FS_HZ       4000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 4kHz) */
 #define INS_GYRO_NOTCH_EN      1u        /* 1=陷波1(实测低频峰)                */
 #define INS_GYRO_NOTCH_F0      271.0f    /* 陷波1 中心频率(Hz) ★实测值          */
 #define INS_GYRO_NOTCH_Q       6.8f      /* 带宽 = F0/Q ≈ 40Hz (271±20)        */

@@ -1,8 +1,8 @@
 /**
  * @file  Flight.h
- * @brief 飞行主循环节拍: TIM6 2kHz -> 信号量 -> 单一 Flight 任务
+ * @brief 飞行主循环节拍: TIM6 4kHz -> 信号量 -> 单一 Flight 任务
  *
- *  一拍(500us)内的顺序固定为:
+ *  一拍(250us)内的顺序固定为:
  *      INS_Update()      读IMU/校准/陀螺滤波/EKF/姿态
  *      Control_Update()  摇杆->姿态环->角速度环->混控->DShot 输出
  *
@@ -20,9 +20,9 @@
 
 #include "main.h"
 
-/* 飞行主循环频率: TIM6 = 170MHz/(169+1)/(499+1) = 2kHz, 与 tim.c 的 MX_TIM6_Init 对应 */
-#define FLIGHT_LOOP_HZ      2000u
-#define FLIGHT_LOOP_DT      (1.0f / (float)FLIGHT_LOOP_HZ)     /* 0.5ms */
+/* 飞行主循环频率: TIM6 = 170MHz/(169+1)/(249+1) = 4kHz, 与 tim.c 的 MX_TIM6_Init 对应 */
+#define FLIGHT_LOOP_HZ      4000u
+#define FLIGHT_LOOP_DT      (1.0f / (float)FLIGHT_LOOP_HZ)     /* 0.25ms */
 
 /* ISR 侧: 只发信号量, 不做任何计算(在 TIM6_DAC_IRQHandler 里调用) */
 void Flight_Timer_ISR(void);
