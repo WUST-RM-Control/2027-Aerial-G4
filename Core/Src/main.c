@@ -21,18 +21,16 @@
 #include "cmsis_os.h"
 #include "adc.h"
 #include "dma.h"
-#include "i2c.h"
+#include "usart.h"
 #include "spi.h"
 #include "tim.h"
-#include "usart.h"
-#include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "USART_Driver.h"
 #include "Buzzer.h"
-#include "USB_Driver.h"
+#include "Heater.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,6 +90,20 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+    /* ★ 加热 MOSFET 栅极尽早拉低(PA11 = TIM4_CH1):
+     *   上电到 MX_TIM4_Init() 之前引脚是浮空输入, 这里先配成推挽输出低,
+     *   保证加热管从第一个毫秒起就是关断的(栅极另有 10k 下拉, 双保险)。 */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    {
+      GPIO_InitTypeDef gpio = {0};
+      gpio.Pin   = GPIO_PIN_11;
+      gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+      gpio.Pull  = GPIO_NOPULL;
+      gpio.Speed = GPIO_SPEED_FREQ_LOW;
+      HAL_GPIO_Init(GPIOA, &gpio);
+      HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, GPIO_PIN_RESET);
+    }
+
     HAL_Delay(500);
   /* USER CODE END SysInit */
 
@@ -99,16 +111,17 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC2_Init();
-  MX_SPI1_Init();
   MX_SPI2_Init();
   MX_TIM3_Init();
-  MX_TIM4_Init();
-  MX_TIM6_Init();
-  MX_TIM7_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
-  MX_I2C3_Init();
+  MX_TIM6_Init();
+  MX_TIM7_Init();
+  MX_TIM2_Init();
+  MX_LPUART1_UART_Init();
+  MX_SPI1_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
     DWT_Init(170);  
                                      
@@ -153,9 +166,8 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV2;
@@ -217,6 +229,9 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  /* ★ 出错第一件事: 关加热 PWM(只写寄存器, 不依赖 HAL/调度器) */
+  Heater_EmergencyOff();
+
   __disable_irq();
   while (1)
   {

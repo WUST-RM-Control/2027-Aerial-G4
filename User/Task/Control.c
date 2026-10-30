@@ -6,10 +6,11 @@
  *  高度环(高度P -> 速度P) ─┴────── 总距 ──────────┘
  *
  *  模式(SB): -1 自稳 / 0 定高 / 1 定点; Acro(摇杆直接给角速度)保留可切
- *  调参: 全部在 Control_PID_Init() 内, 直接改数字
+ *  调参: 全部在 User/Task/Parameter.h 第 5 节
  *  姿态数学(四元数/旋转矩阵/姿态误差): User/Algorithm/Attitude.c
  *===========================================================================*/
 #include "Control.h"
+#include "Parameter.h"
 #include "Remote_Control.h"
 #include "Sensor.h"
 #include "INS.h"
@@ -19,12 +20,7 @@
 
 #include "math.h"
 
-/*===| 功能开关 |===*/
-#define CONTROL_USE_QUATERNION   1u   /* 1=四元数姿态误差(无奇异)  0=欧拉角相减 */
-#define CONTROL_THROTTLE_SQUARE  1u   /* 1=杆量线性映射到占空比     0=线性映射到推力 */
-#define CONTROL_TILT_COMP        1    /* 倾斜油门补偿 */
-#define CONTROL_V_COMP           1    /* 电压补偿 */
-#define CONTROL_AUTO_ROLL        0    /* 一键滚转(SD 触发) */
+/* 功能开关与全部 PID 参数见 Parameter.h 第 5 节「飞行控制」 */
 
 Control_StructTypedef Control;
 
@@ -57,25 +53,35 @@ void Control_Set_Thrust(uint8_t Fan_ID, float Thrust_100)
 static void Control_PID_Init(void)
 {
     /* 高度环: 高度 -> 速度 -> 推力(悬停前馈见 Control_RateLoop) */
-    PID_Init(&Control.PID_P_Height, 1.0f,  0.0f,   0.01f, 0.0f,  0.0f,  500.0f);
-    PID_Init(&Control.PID_S_Height, 0.015f, 0.02f, 0.0f,  0.0f, 5.0f,   20.0f);
+    PID_Init(&Control.PID_P_Height, CTRL_HEIGHT_P_KP, CTRL_HEIGHT_P_KI, CTRL_HEIGHT_P_KD,
+             CTRL_HEIGHT_P_KF, CTRL_HEIGHT_P_IMAX, CTRL_HEIGHT_P_MAX);
+    PID_Init(&Control.PID_S_Height, CTRL_HEIGHT_S_KP, CTRL_HEIGHT_S_KI, CTRL_HEIGHT_S_KD,
+             CTRL_HEIGHT_S_KF, CTRL_HEIGHT_S_IMAX, CTRL_HEIGHT_S_MAX);
 
-    /* 角度外环(deg 误差 -> deg/s 期望角速度), 只用 P */
-    PID_Init(&Control.PID_P_Roll,  15.0f, 0.0f, 0.01f, 0.0f, 0.0f, 500.0f);
-    PID_Init(&Control.PID_P_Pitch, 15.0f, 0.0f, 0.01f, 0.0f, 0.0f, 500.0f);
-    PID_Init(&Control.PID_P_Yaw,   20.0f, 0.0f, 0.0f, 0.0f, 0.0f, 500.0f);
+    /* 角度外环(deg 误差 -> deg/s 期望角速度), 只用 P; Roll/Pitch 对称共用一组 */
+    PID_Init(&Control.PID_P_Roll, CTRL_ANGLE_RP_KP, CTRL_ANGLE_RP_KI, CTRL_ANGLE_RP_KD,
+             CTRL_ANGLE_RP_KF, CTRL_ANGLE_RP_IMAX, CTRL_ANGLE_RP_MAX);
+    PID_Init(&Control.PID_P_Pitch, CTRL_ANGLE_RP_KP, CTRL_ANGLE_RP_KI, CTRL_ANGLE_RP_KD,
+             CTRL_ANGLE_RP_KF, CTRL_ANGLE_RP_IMAX, CTRL_ANGLE_RP_MAX);
+    PID_Init(&Control.PID_P_Yaw, CTRL_ANGLE_YAW_KP, CTRL_ANGLE_YAW_KI, CTRL_ANGLE_YAW_KD,
+             CTRL_ANGLE_YAW_KF, CTRL_ANGLE_YAW_IMAX, CTRL_ANGLE_YAW_MAX);
 
-    /* 角速度内环(deg/s -> 推力差动), 线性区 = 40/0.15 约 267 deg/s */
-    PID_Init(&Control.PID_S_Roll,  0.15f,  0.0f, 0.0f, 0.0f, 10.0f, 50.0f);
-    PID_Init(&Control.PID_S_Pitch, 0.15f,  0.0f, 0.0f, 0.0f, 10.0f, 50.0f);
-    PID_Init(&Control.PID_S_Yaw,   0.1f,  0.0f, 0.0f, 0.0f,  5.0f, 40.0f);
-    PID_Set_D_LPF(&Control.PID_S_Roll,  30.0f);     /* D 项低通(Hz) */
-    PID_Set_D_LPF(&Control.PID_S_Pitch, 30.0f);
-    PID_Set_D_LPF(&Control.PID_S_Yaw,   30.0f);
+    /* 角速度内环(deg/s -> 推力差动), 线性区 = 40/0.15 约 267 deg/s; Roll/Pitch 共用 */
+    PID_Init(&Control.PID_S_Roll, CTRL_RATE_RP_KP, CTRL_RATE_RP_KI, CTRL_RATE_RP_KD,
+             CTRL_RATE_RP_KF, CTRL_RATE_RP_IMAX, CTRL_RATE_RP_MAX);
+    PID_Init(&Control.PID_S_Pitch, CTRL_RATE_RP_KP, CTRL_RATE_RP_KI, CTRL_RATE_RP_KD,
+             CTRL_RATE_RP_KF, CTRL_RATE_RP_IMAX, CTRL_RATE_RP_MAX);
+    PID_Init(&Control.PID_S_Yaw, CTRL_RATE_YAW_KP, CTRL_RATE_YAW_KI, CTRL_RATE_YAW_KD,
+             CTRL_RATE_YAW_KF, CTRL_RATE_YAW_IMAX, CTRL_RATE_YAW_MAX);
+    PID_Set_D_LPF(&Control.PID_S_Roll,  CTRL_RATE_D_LPF_HZ);   /* D 项低通(Hz) */
+    PID_Set_D_LPF(&Control.PID_S_Pitch, CTRL_RATE_D_LPF_HZ);
+    PID_Set_D_LPF(&Control.PID_S_Yaw,   CTRL_RATE_D_LPF_HZ);
 
     /* 定点速度环(m/s -> 姿态角) */
-    PID_Init(&Control.PID_S_X, 0.03f, 0.05f, 0.0f, 0.0f, 50.0f, 100.0f);
-    PID_Init(&Control.PID_S_Y, 0.03f, 0.05f, 0.0f, 0.0f, 50.0f, 100.0f);
+    PID_Init(&Control.PID_S_X, CTRL_VEL_X_KP, CTRL_VEL_X_KI, CTRL_VEL_X_KD,
+             CTRL_VEL_X_KF, CTRL_VEL_X_IMAX, CTRL_VEL_X_MAX);
+    PID_Init(&Control.PID_S_Y, CTRL_VEL_Y_KP, CTRL_VEL_Y_KI, CTRL_VEL_Y_KD,
+             CTRL_VEL_Y_KF, CTRL_VEL_Y_IMAX, CTRL_VEL_Y_MAX);
 }
 
 /*============================================================================

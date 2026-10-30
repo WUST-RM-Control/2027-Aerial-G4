@@ -2,12 +2,12 @@
 #include "tim.h"
 
 /*==============================================================================
- *  DShot600 输出驱动 (TIM4 CH1~CH4 + DMA)
+ *  DShot600 输出驱动 (TIM2 CH1~CH4 + DMA)
  *
  *  实现思路:
  *   1) 一个 PWM 周期 = 一个 bit, bit 的值由"高电平持续几个计数"决定。
  *      每个 bit 发完时(CNT 追上 CCR)会产生一次 CC 事件, 用它触发 DMA,
- *      把下一个 bit 的 CCR 值搬进 TIM4->CCRx。一帧 21 个 bit = 21 次搬运。
+ *      把下一个 bit 的 CCR 值搬进 TIM2->CCRx。一帧 21 个 bit = 21 次搬运。
  *
  *   2) CCR 预装载(OCxPE)必须打开: DMA 是在高电平结束那一刻写入新值,
  *      若没有预装载, 新值会立刻改变输出电平(例如 '0' 后面跟 '1' 时会提前拉高),
@@ -27,26 +27,40 @@
  *      普通模式下传输结束硬件自动清 EN, 下一帧直接重装即可。 *============================================================================*/
 
 /* tim.h 里没有导出这几个 DMA 句柄(CubeMX 只生成了实例定义), 这里自行声明 */
-extern DMA_HandleTypeDef hdma_tim4_ch1;
-extern DMA_HandleTypeDef hdma_tim4_ch2;
-extern DMA_HandleTypeDef hdma_tim4_ch3;
-extern DMA_HandleTypeDef hdma_tim4_ch4;
+extern DMA_HandleTypeDef hdma_tim2_ch1;
+extern DMA_HandleTypeDef hdma_tim2_ch2;
+extern DMA_HandleTypeDef hdma_tim2_ch3;
+extern DMA_HandleTypeDef hdma_tim2_ch4;
 
-/* 每路一帧要搬的 CCR 值(半字), DMA 直接从内存搬到 TIM4->CCRx */
+/* 每路一帧要搬的 CCR 值(半字), DMA 直接从内存搬到 TIM2->CCRx */
 static uint16_t DShot_Buf[DSHOT_MOTOR_NUM][DSHOT_BUF_LEN];
 
 /**
  * @brief  启动一路 DMA(直接写寄存器)
- * @param  DMA_Channel 由 hdma_tim4_chX.Instance 给出(DMA1_CH6/7/8, DMA2_CH1)
+ * @param  DMA_Channel 由 hdma_tim2_chX.Instance 给出(DMA1_CH6/7/8, DMA2_CH1)
  * @param  Src         内存源地址(本路 CCR 缓冲)
- * @param  Dst         外设目标地址(&htim4.Instance->CCRx)
+ * @param  Dst         外设目标地址(&htim2.Instance->CCRx)
  * @note   不调用 HAL_DMA_Start_IT 的原因见文件头说明 5)。
  *         不使能任何 DMA 中断 -> HAL_DMA_IRQHandler / 旧的回调都不再被调用。
  */
 static void DShot_DMA_Start(DMA_Channel_TypeDef *DMA_Channel, uint32_t Src, uint32_t Dst)
 {
     DMA_Channel->CCR  &= ~DMA_CCR_EN;          /* 上一帧若还没结束(异常情况)先停掉 */
-    while (DMA_Channel->CCR & DMA_CCR_EN) { }  /* 等硬件确认已停止(HAL_DMA_Abort 同款做法) */
+    {   /* 等硬件确认已停止, 但必须有上限: 万一 DMA 请求没接上(CEN 永远不清),
+         * 原来这里是死等, 会把整个 Flight 任务卡死(优先级最高, 全系统看起来像宕机) */
+        uint32_t guard = 0;
+        while ((DMA_Channel->CCR & DMA_CCR_EN) && (++guard < 100000u)) { }
+    }
+
+    /* 传输属性在这里强制成 DShot 需要的样子(不依赖 CubeMX/生成代码里的 DMA 配置):
+     *   存储器 -> 外设, 半字(CCR 缓冲是 uint16_t), 存储器自增, 高优先级
+     * 这样即使以后 CubeMX 重新生成把 TIM2_CHx 的 DMA 配成 WORD/LOW, 电机输出也不会坏 */
+    DMA_Channel->CCR &= ~(DMA_CCR_MSIZE | DMA_CCR_PSIZE | DMA_CCR_DIR |
+                          DMA_CCR_MINC | DMA_CCR_PINC | DMA_CCR_PL |
+                          DMA_CCR_CIRC | DMA_CCR_MEM2MEM);
+    DMA_Channel->CCR |= (DMA_CCR_MSIZE_0 | DMA_CCR_PSIZE_0 | DMA_CCR_DIR |
+                         DMA_CCR_MINC | DMA_CCR_PL_1);
+
     DMA_Channel->CPAR  = Dst;
     DMA_Channel->CMAR  = Src;
     DMA_Channel->CNDTR = DSHOT_BUF_LEN;        /* 21 个半字 = 21 个 bit */
@@ -55,35 +69,36 @@ static void DShot_DMA_Start(DMA_Channel_TypeDef *DMA_Channel, uint32_t Src, uint
 
 /**
  * @brief  DShot 输出初始化
- * @note   调用前 MX_DMA_Init() / MX_TIM4_Init() 必须已经执行
+ * @note   调用前 MX_DMA_Init() / MX_TIM2_Init() 必须已经执行
  */
 void DShot_Init(void)
 {
     /* 1) 打开 CCR 预装载, 关闭 fast mode(原因见文件头说明) */
-    htim4.Instance->CCMR1 |=  (TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE);
-    htim4.Instance->CCMR2 |=  (TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE);
-    htim4.Instance->CCMR1 &= ~(TIM_CCMR1_OC1FE | TIM_CCMR1_OC2FE);
-    htim4.Instance->CCMR2 &= ~(TIM_CCMR2_OC3FE | TIM_CCMR2_OC4FE);
+    htim2.Instance->CCMR1 |=  (TIM_CCMR1_OC1PE | TIM_CCMR1_OC2PE);
+    htim2.Instance->CCMR2 |=  (TIM_CCMR2_OC3PE | TIM_CCMR2_OC4PE);
+    htim2.Instance->CCMR1 &= ~(TIM_CCMR1_OC1FE | TIM_CCMR1_OC2FE);
+    htim2.Instance->CCMR2 &= ~(TIM_CCMR2_OC3FE | TIM_CCMR2_OC4FE);
 
     /* 2) 输出脚翻转速度拉满: CubeMX 生成的是 GPIO_SPEED_FREQ_LOW, 600kHz 下
      *    边沿太缓会把 0.58us 的 '0' 脉冲"拉宽", 电调很容易把它当成 '1'
      *    (16 位全 1 在 DShot 里是合法的满油帧 -> 现象就是"一使能就满油门")。
-     *    写在 DShot_Init 里, CubeMX 重新生成也不会被覆盖 */
+     *    写在 DShot_Init 里, CubeMX 重新生成也不会被覆盖
+     *    V3: 电机 4 路在 PA0~PA3 = TIM2_CH1~CH4 (旧板是 PB6~PB9/TIM4) */
     {
         GPIO_InitTypeDef gpio = {0};
-        gpio.Pin       = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
+        gpio.Pin       = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3;
         gpio.Mode      = GPIO_MODE_AF_PP;
         gpio.Pull      = GPIO_NOPULL;
         gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
-        gpio.Alternate = GPIO_AF2_TIM4;
-        HAL_GPIO_Init(GPIOB, &gpio);
+        gpio.Alternate = GPIO_AF1_TIM2;
+        HAL_GPIO_Init(GPIOA, &gpio);
     }
 
     /* 3) 启动 4 路 PWM(CCR=0 -> 空闲低电平), 计数器开始跑 */
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
+    HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 
     /* 4) 先填一帧"停转"(油门值 0), 保证发出去的是合法帧而不是随机波形 */
     for (uint8_t i = 0; i < DSHOT_MOTOR_NUM; i++)
@@ -152,11 +167,11 @@ void DShot_Set_Duty(uint8_t Motor_ID, float Duty_100)
  */
 void DShot_Send(void)
 {
-    DShot_DMA_Start(hdma_tim4_ch1.Instance, (uint32_t)DShot_Buf[0], (uint32_t)&htim4.Instance->CCR1);
-    DShot_DMA_Start(hdma_tim4_ch2.Instance, (uint32_t)DShot_Buf[1], (uint32_t)&htim4.Instance->CCR2);
-    DShot_DMA_Start(hdma_tim4_ch3.Instance, (uint32_t)DShot_Buf[2], (uint32_t)&htim4.Instance->CCR3);
-    DShot_DMA_Start(hdma_tim4_ch4.Instance, (uint32_t)DShot_Buf[3], (uint32_t)&htim4.Instance->CCR4);
+    DShot_DMA_Start(hdma_tim2_ch1.Instance, (uint32_t)DShot_Buf[0], (uint32_t)&htim2.Instance->CCR1);
+    DShot_DMA_Start(hdma_tim2_ch2.Instance, (uint32_t)DShot_Buf[1], (uint32_t)&htim2.Instance->CCR2);
+    DShot_DMA_Start(hdma_tim2_ch3.Instance, (uint32_t)DShot_Buf[2], (uint32_t)&htim2.Instance->CCR3);
+    DShot_DMA_Start(hdma_tim2_ch4.Instance, (uint32_t)DShot_Buf[3], (uint32_t)&htim2.Instance->CCR4);
 
     /* 使能 CC 事件触发 DMA: 每来一次比较事件搬一个 bit */
-    __HAL_TIM_ENABLE_DMA(&htim4, TIM_DMA_CC1 | TIM_DMA_CC2 | TIM_DMA_CC3 | TIM_DMA_CC4);
+    __HAL_TIM_ENABLE_DMA(&htim2, TIM_DMA_CC1 | TIM_DMA_CC2 | TIM_DMA_CC3 | TIM_DMA_CC4);
 }

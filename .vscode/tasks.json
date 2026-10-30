@@ -1,0 +1,65 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "g474-uart2-state",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\Users\\14356\\AppData\\Local\\Temp\\eb.ps1",
+				"mcu-variables",
+				"read.js",
+				"--variables",
+				"huart2.gState,huart2.RxState,huart2.ErrorCode,huart2.Init.BaudRate,Vofa_Send_Count,Vofa_Drop_Count,Vofa_Tick_Count"
+			],
+			"group": "none"
+		},
+		{
+			"label": "g474-range-build",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\Users\\14356\\AppData\\Local\\Temp\\eb_build.ps1"
+			],
+			"group": "none"
+		},
+		{
+			"label": "g474-range-flash",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\Users\\14356\\AppData\\Local\\Temp\\eb_dl.ps1"
+			],
+			"group": "none"
+		},
+		{
+			"label": "g474-range-check",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"C:\\Users\\14356\\AppData\\Local\\Temp\\eb.ps1",
+				"mcu-variables",
+				"read.js",
+				"--variables",
+				"INS.Accel[0],INS.Accel[1],INS.Accel[2],INS.Gyro[0],INS.Gyro[1],INS.Gyro[2],INS.Roll,INS.Pitch,Heater.Temp_C,Flight_LoopOverRun"
+			],
+			"group": "none"
+		}
+	]
+}

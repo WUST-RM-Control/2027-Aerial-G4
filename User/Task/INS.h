@@ -69,12 +69,14 @@ typedef struct
 
 extern INS_t INS;
 
+/* 调试用: 最近一个陀螺样本的真实间隔(us), 正常 ≈ 1000000/BMI088_GYRO_ODR_HZ */
+extern volatile uint32_t INS_Sample_Dt_Us;
+
 void INS_Init(void);
 
-/* Flight_Task 用接口: 初始化(只一次) / 单拍解算(4kHz 调用, 内部不延时) */
+/* Flight_Task 用接口: 初始化(只一次) / 每个 TIM6 节拍调用一次(内部不延时) */
 void INS_Init_All(void);
 void INS_Update(void);
-
 void QuaternionUpdate(float *q, float gx, float gy, float gz, float dt);
 void QuaternionToEularAngle(float *q, float *Yaw, float *Pitch, float *Roll);
 void EularAngleToQuaternion(float Yaw, float Pitch, float Roll, float *q);

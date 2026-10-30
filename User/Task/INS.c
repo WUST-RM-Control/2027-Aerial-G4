@@ -1,7 +1,8 @@
 #include "INS.h"
 
+#include "Parameter.h"
 #include "QuaternionEKF.h"
-#include "QMI8658A.h"
+#include "BMI088.h"
 #include "IMU_Cal.h"
 #include "Buzzer.h"
 #include "Filter.h"
@@ -16,6 +17,13 @@ const float zb[3] = {0, 0, 1};
 uint32_t INS_DWT_Count = 0;
 static float dt = 0, t = 0;
 uint8_t ins_debug_mode = 0;
+/* 调试/验证用: 最近一个陀螺样本的真实间隔(us)。正常应在
+ * 1000000/BMI088_GYRO_ODR_HZ ≈ 500us 附近小幅波动; 恒定不变说明 INT 没生效,
+ * 一直在走 20ms 兜底轮询。 */
+volatile uint32_t INS_Sample_Dt_Us = 0;
+#if (INS_SAMPLE_TS_EN == 1u)
+static uint32_t INS_Gyro_Seq_Last = 0;   /* 上次处理过的陀螺样本序号(判“有没有新样本”) */
+#endif
 
 /*==============================================================================
  *  陀螺滤波链(抑制电机/桨振动): 原始 -> 陷波1 -> 陷波2 -> 二阶低通 ->(可选)一阶低通
@@ -34,20 +42,10 @@ uint8_t ins_debug_mode = 0;
  *     657Hz ± 30Hz(BW 60) -> Q = 11    (坑 627~687Hz)
  *  ⚠ 窄陷波只在测频谱那个转速准; 若峰随油门成比例移动, 就得换动态陷波/RPM 滤波。
  *============================================================================*/
-#define INS_FILTER_FS_HZ       4000.0f   /* 滤波器采样率 = Flight 循环率(TIM6 4kHz) */
-#define INS_GYRO_NOTCH_EN      1u        /* 1=陷波1(实测低频峰)                */
-#define INS_GYRO_NOTCH_F0      271.0f    /* 陷波1 中心频率(Hz) ★实测值          */
-#define INS_GYRO_NOTCH_Q       6.8f      /* 带宽 = F0/Q ≈ 40Hz (271±20)        */
-#define INS_GYRO_NOTCH2_EN     1u        /* 1=陷波2(实测高频峰)                */
-#define INS_GYRO_NOTCH2_F0     657.0f    /* 陷波2 中心频率(Hz) ★实测值          */
-#define INS_GYRO_NOTCH2_Q      11.0f     /* 带宽 = F0/Q ≈ 60Hz (657±30)        */
-#define INS_GYRO_LP_EN         1u        /* 1=陷波后再加一级二阶低通          */
-#define INS_GYRO_LP_FC         350.0f    /* 二阶低通截止频率(Hz), 延迟≈0.64ms  */
-#define INS_GYRO_FILTER_EKF    1u        /* 1=EKF 也用滤波后角速度(默认原始)  */
+/* 全部滤波参数见 Parameter.h 第 2 节「IMU 滤波 / 姿态解算」 */
 
 /* 角速度反馈再串一级一阶低通(兜底): 0=关
  * 注: 0.01(=16Hz) 太滞后, 会让内环发软发飘; 有陷波后这里保持 0 即可 */
-#define INS_ANG_SPEED_TAU      0.0f
 
 /* ── EKF 观测(加速度计)低通时间常数(s): 0 = 完全不过滤 ──
  * 为什么不能用 0: 桨/电机振动会把加速度矢量在 ±1g 以上调制, 直接送进 EKF 后,
@@ -61,7 +59,6 @@ uint8_t ins_debug_mode = 0;
  *   pitch/roll 偏十几度就是这条链被踩中), 所以这里保持 0.01。
  *   需更快跟随倾斜时可降到 0.005, 但同时必须把 QEKF_ADAPT_GAIN_MIN 抬上去。
  * 注意: 它与 INS.AccelLPF(只用于算运动加速度)无关, 别搞混。 */
-#define INS_EKF_ACCEL_LPF_TAU  0.010f
 
 static float INS_Speed_LP[3] = {0.0f, 0.0f, 0.0f};   /* 3路一阶低通状态(芯片原始轴向) [0]=GyroX [1]=GyroY [2]=GyroZ */
 #if (INS_GYRO_NOTCH_EN == 1u)
@@ -90,7 +87,8 @@ void INS_Init(void)
 
     /* 末位参数 = EKF 内部对加速度计的一阶低通时间常数(s), 0 = 不过滤
      * 详见文件顶部 INS_EKF_ACCEL_LPF_TAU 的说明 */
-    IMU_QuaternionEKF_Init(10, 0.005, 1000000, 1, INS_EKF_ACCEL_LPF_TAU);
+    IMU_QuaternionEKF_Init(QEKF_PROCESS_NOISE1, QEKF_PROCESS_NOISE2, QEKF_MEASURE_NOISE,
+                           QEKF_LAMBDA, INS_EKF_ACCEL_LPF_TAU);
 
     INS.AccelLPF = 0.0085;
 
@@ -122,10 +120,11 @@ void INS_Init(void)
 void INS_Init_All(void)
 {
     INS_Init();
-    QMI8658A_Init();
+    BMI088_Init();
 
-    // 上电直接加载固化的校准参数(跳过交互式 IMU_Cal())
-    // 需要重新标定时, 把下面 if 块改回 IMU_Cal(); 即可
+    // 上电只认 Flash 里保存的标定参数;
+    // Flash 里没有(或记录损坏)时才会跑一次交互式 IMU_Cal(), 结束后自动写回 Flash。
+    // 需要强制重新标定: 先 IMU_Cal_Reset_Config() + IMU_Cal_Save_Config() 抹掉记录再重启。
     if (!IMU_Cal_Load_Config())
     {
         IMU_Cal();
@@ -139,16 +138,38 @@ void INS_Init_All(void)
 }
 
 /*============================================================================
- *  一拍姿态解算(4kHz, 由 Flight_Task 在 TIM6 节拍里调用, 内部不再自带延时)
+ *  一拍姿态解算(由 Flight_Task 在 TIM6 节拍里调用, 内部不再自带延时)
+ *
+ *  ★ 精度关键: 积分只在“有新陀螺样本”时推进一次, dt 用 EXTI 记下的硬件
+ *    时间戳算真实样本间隔(见 BMI088.Gyro_Dt_Cyc / INS_SAMPLE_TS_EN)。
+ *    传感器 ODR(2000Hz) 与 TIM6 节拍(2000Hz) 不是同一个时钟源, 若死用固定
+ *    dt, 会出现某个样本被用 1 次或 3 次 -> 积分总时长偶尔多/少半拍。
  *===========================================================================*/
 void INS_Update(void)
 {
     const float gravity[3] = {0, 0, 9.8f};
 
+    /* 先维护 DWT 循环计时(INS_DWT_Count 仍可用于观测循环抖动) */
     dt = DWT_GetDeltaT(&INS_DWT_Count);
 
     // ins update
     IMU_Cal_Get_Calibrated_Data(INS.Accel, INS.Gyro);   // 标定完成后改回此行即可
+
+#if (INS_SAMPLE_TS_EN == 1u)
+    /* ★ 判新样本必须放在读数据之后: BMI088_Read_Data() 内部才递增 Gyro_Seq。
+     * 没有新样本时不重复积分、也不重复滤波 —— 把同一份数据当两个样本再跑
+     * 一遍滤波, 等效于把截止频率压低一半, 只会多出相位滞后。 */
+    if (BMI088.Gyro_Seq == INS_Gyro_Seq_Last)
+    {
+        return;                       /* 输出保持上一拍的值, 控制环照常用 */
+    }
+    INS_Gyro_Seq_Last = BMI088.Gyro_Seq;
+
+    dt = DWT_Cyc_To_S(BMI088.Gyro_Dt_Cyc);            /* 老样本之间的真实间隔 */
+    /* 首个样本(没有间隔)/兜底轮询/时间戳异常 -> 退回理论采样间隔 */
+    if ((dt < 1.0e-5f) || (dt > 0.02f)) dt = 1.0f / (float)BMI088_GYRO_ODR_HZ;
+    INS_Sample_Dt_Us = BMI088.Gyro_Dt_Us;
+#endif
 
     // 陀螺零漂后台校准: 用本帧刚读到的原始数据累计, 非阻塞(静止约 0.5s 后生效)
     // 参数见 IMU_Cal.h 的 IMU_CAL_GYRO_CAL_*; 也可调 IMU_Cal_Gyro_Bias_Restart() 重来

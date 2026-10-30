@@ -34,11 +34,9 @@ extern "C" {
 #include "cmsis_os.h"
 #include "adc.h"
 #include "dma.h"
-#include "i2c.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
-#include "usb_device.h"
 #include "gpio.h"
 
 #include "arm_math.h"
@@ -50,7 +48,6 @@ extern "C" {
 #include "define.h"
 #include "PID.h"
 #include "USART_Driver.h"
-#include "USB_Driver.h"
 #include "Function.h"
 #include "DWT.h"
 #include "Flash.h"
@@ -87,10 +84,18 @@ void Error_Handler(void);
 #define LED_G_GPIO_Port GPIOC
 #define LED_B_Pin GPIO_PIN_15
 #define LED_B_GPIO_Port GPIOC
-#define PMW_CS_Pin GPIO_PIN_0
-#define PMW_CS_GPIO_Port GPIOB
-#define IMU_CS_Pin GPIO_PIN_12
-#define IMU_CS_GPIO_Port GPIOB
+#define BPS_CS_Pin GPIO_PIN_0
+#define BPS_CS_GPIO_Port GPIOB
+#define BPS_INT_Pin GPIO_PIN_1
+#define BPS_INT_GPIO_Port GPIOB
+#define IMU_CS_ACC_Pin GPIO_PIN_12
+#define IMU_CS_ACC_GPIO_Port GPIOB
+#define IMU_CS_GYRO_Pin GPIO_PIN_8
+#define IMU_CS_GYRO_GPIO_Port GPIOA
+#define IMU_INT_ACC_Pin GPIO_PIN_9
+#define IMU_INT_ACC_GPIO_Port GPIOA
+#define IMU_INT_GYRO_Pin GPIO_PIN_10
+#define IMU_INT_GYRO_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

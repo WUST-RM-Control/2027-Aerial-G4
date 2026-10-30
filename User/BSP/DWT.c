@@ -111,6 +111,24 @@ static void DWT_CNT_Update(void)
     CYCCNT_LAST = cnt_now;
 }
 
+/* 主频(Hz): DWT_Init 时按 MHz 传入 */
+uint32_t DWT_GetCpuFreq_Hz(void)
+{
+    return CPU_FREQ_Hz;
+}
+
+/* DWT 周期数 -> 秒。单精度乘法(1 次/样本)比 64 位除法快几十倍,
+ * 且浮点尾数 24 位对 ~1e5 级别的周期数足够(误差 < 1e-9 s) */
+float DWT_Cyc_To_S(uint32_t cycles)
+{
+    return (float)cycles * (1.0f / (float)CPU_FREQ_Hz);
+}
+
+uint32_t DWT_Cyc_To_Us(uint32_t cycles)
+{
+    return (uint32_t)((float)cycles * (1000000.0f / (float)CPU_FREQ_Hz));
+}
+
 void DWT_Delay(float Delay)
 {
     uint32_t tickstart = DWT->CYCCNT;

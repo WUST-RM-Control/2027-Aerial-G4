@@ -272,7 +272,70 @@ void Buzzer_Task(void const *argument)
 							}
 						  Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
 							break;
-						}							
+						}	
+
+            /* ================= IMU 交互标定提示音 =================
+             * 六个面: 用"音高 + 响铃次数"区分
+             *   第 1/2/3 个面 = 低音响 1/2/3 声
+             *   第 4/5/6 个面 = 高音响 1/2/3 声
+             * 后两个参考姿态用不同音型(长音 / 下滑音), 不会和"数铃声"混。 */
+            case Buzzer_SoundEffect_IMU_Cal_Start:
+            {
+                /* 开始标定: 两短一长(中音上行) */
+                Buzzer_Start();
+                Buzzer_Set_Tone(M2); osDelay(120); Buzzer_Set_Tone(P); osDelay(100);
+                Buzzer_Set_Tone(M2); osDelay(120); Buzzer_Set_Tone(P); osDelay(100);
+                Buzzer_Set_Tone(M6); osDelay(300); Buzzer_Set_Tone(P);
+                Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
+                break;
+            }
+            case Buzzer_SoundEffect_IMU_Cal_Pose1:
+            case Buzzer_SoundEffect_IMU_Cal_Pose2:
+            case Buzzer_SoundEffect_IMU_Cal_Pose3:
+            case Buzzer_SoundEffect_IMU_Cal_Pose4:
+            case Buzzer_SoundEffect_IMU_Cal_Pose5:
+            case Buzzer_SoundEffect_IMU_Cal_Pose6:
+            {
+                uint8_t idx  = (uint8_t)Buzzer_SoundEffect - (uint8_t)Buzzer_SoundEffect_IMU_Cal_Pose1; /* 0~5 */
+                uint8_t cnt  = (uint8_t)((idx % 3u) + 1u);                       /* 响 1~3 声      */
+                Buzzer_Tone_EnumTypedef tone = (idx < 3u) ? L5 : H4;             /* 前3面低音/后3面高音 */
+
+                Buzzer_Start();
+                for (uint8_t i = 0; i < cnt; i++)
+                {
+                    Buzzer_Set_Tone(tone); osDelay(120);
+                    Buzzer_Set_Tone(P);    osDelay(120);
+                }
+                Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
+                break;
+            }
+            case Buzzer_SoundEffect_IMU_Cal_RefUp:
+            {
+                /* 重力方向(正面朝上)锁定: 一个长中音 */
+                Buzzer_Start();
+                Buzzer_Set_Tone(M5); osDelay(500); Buzzer_Set_Tone(P);
+                Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
+                break;
+            }
+            case Buzzer_SoundEffect_IMU_Cal_RefFwd:
+            {
+                /* 机头(前向)锁定: 两短下滑高音 */
+                Buzzer_Start();
+                Buzzer_Set_Tone(H5); osDelay(110); Buzzer_Set_Tone(P); osDelay(60);
+                Buzzer_Set_Tone(H2); osDelay(110); Buzzer_Set_Tone(P);
+                Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
+                break;
+            }
+            case Buzzer_SoundEffect_IMU_Cal_Done:
+            {
+                /* 全部完成且已写入 Flash: 三音上行 + 收尾长音 */
+                Buzzer_Start();
+                Buzzer_Set_Tone(M5); osDelay(110); Buzzer_Set_Tone(P); osDelay(50);
+                Buzzer_Set_Tone(M7); osDelay(110); Buzzer_Set_Tone(P); osDelay(50);
+                Buzzer_Set_Tone(H5); osDelay(280); Buzzer_Set_Tone(P);
+                Buzzer_SoundEffect = Buzzer_SoundEffect_OFF;
+                break;
+            }						
         }
         
 		osDelay(BUZZER_TASK_CONTROL_TIME);
@@ -293,6 +356,33 @@ void Buzzer_Set_SoundEffect(Buzzer_SoundEffect_EnumTypedef SoundEffect)
 void Buzzer_Queue_SoundEffect(Buzzer_SoundEffect_EnumTypedef SoundEffect)
 {
     Buzzer_SoundEffect_Queue = SoundEffect;
+}
+
+/**
+ * @brief 是否还有音效在播/在排队
+ * @note  排队区深度只有 1: 连续排两个时, 后一个会覆盖前一个。
+ *        需要保证两段声音都被听到时, 先用 Buzzer_Wait_Idle() 等一下。
+ */
+uint8_t Buzzer_Is_Busy(void)
+{
+    return ((Buzzer_SoundEffect != Buzzer_SoundEffect_OFF) ||
+            (Buzzer_SoundEffect_Queue != Buzzer_SoundEffect_OFF)) ? 1u : 0u;
+}
+
+/**
+ * @brief 等音效播完(最多 TimeoutMs)
+ * @return 1 = 已空闲; 0 = 超时仍忙
+ */
+uint8_t Buzzer_Wait_Idle(uint32_t TimeoutMs)
+{
+    uint32_t t0 = HAL_GetTick();
+
+    while (Buzzer_Is_Busy())
+    {
+        if ((uint32_t)(HAL_GetTick() - t0) >= TimeoutMs) return 0u;
+        osDelay(10);
+    }
+    return 1u;
 }
 
 /**

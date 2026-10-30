@@ -13,7 +13,7 @@ static uint8_t Vofa_Tx_Buf[4 * (VOFA_CH_MAX + 2)];
 
 volatile uint32_t Vofa_Drop_Count = 0; /* 上一帧还没发完而被丢弃的帧数(调试用) */
 volatile uint32_t Vofa_Send_Count = 0; /* 真正启动 DMA 的帧数                      */
-volatile uint32_t Vofa_Tick_Count = 0; /* TIM7 节拍数(名义 4kHz)                   */
+volatile uint32_t Vofa_Tick_Count = 0; /* TIM7 节拍数(名义 1kHz)                   */
 
 /* TIM7 节拍信号量: ISR 里 Give, Communicate 任务里 Take(二值信号量, 最多挂 1 个) */
 static SemaphoreHandle_t Vofa_Sem = NULL;
@@ -21,7 +21,9 @@ static SemaphoreHandle_t Vofa_Sem = NULL;
 #define VOFA_TIM_CLK_HZ   170000000u   /* TIM7 挂在 APB1, 定时器时钟 = 170MHz */
 #define VOFA_TIM_PSC_1MHZ 169u         /* (169+1) 分频 -> 1MHz 计数时钟 */
 
-#define Vofa_Send(Data, Length) HAL_UART_Transmit_DMA(&huart1, (Data), (uint16_t)(Length))
+/* 发送口: **USART2**(调试口 U26 6P, PA15/PB3, 已配 4 Mbaud + TX DMA1_Channel4)
+ * 注: USART1 是遥测口(U38 4P), 保持 115200, 不被 VOFA 占用 */
+#define Vofa_Send(Data, Length) HAL_UART_Transmit_DMA(&huart2, (Data), (uint16_t)(Length))
 
 /*============================================================================
  *  TIM7 节拍: 独立于 TIM6(飞行主循环), 频率单独可调
@@ -104,16 +106,16 @@ void Vofa_JF_Add_Data(uint8_t Index, float Data)
 
 /**
  * @brief  justfloat 帧发送(改为 DMA, 不占 CPU)
- * @note   原来用 HAL_UART_Transmit 阻塞发送: 当时 1Mbps 下 40 字节约占 400us,
- *         每 10ms 发一帧就等于烧掉 4% CPU(而且是纯忙等)。当前 USART1 已提到 4Mbps。
- *         现在只做一次 memcpy(几十字节), 然后把缓冲交给 DMA1_Channel2 立刻返回。
+ * @note   原来用 HAL_UART_Transmit 阻塞发送: 1Mbps 下 40 字节约占 400us,
+ *         每 10ms 发一帧就等于烧掉 4% CPU(而且是纯忙等)。
+ *         现在发送口是 USART2(调试口), 已提到 4Mbps, 且用 DMA, CPU 只做一次 memcpy。
  *
  *         为什么用独立缓冲而不是直接发 Vofa_Data:
  *         若下一帧在 DMA 还没发完时改写 Vofa_Data, 发出去的会是半新半旧的混合数据。
  *         独立缓冲 + "上一帧没发完就丢掉这一帧" 对遥测完全够用(丢帧无所谓, 不能阻塞)。
  *
- *         为什么判断 huart1.gState 而不是 HAL_UART_GetState():
- *         USART1 的 RX 一直挂在 HAL_UARTEx_ReceiveToIdle_DMA 上(RxState=BUSY_RX),
+ *         为什么判断 huart.gState 而不是 HAL_UART_GetState():
+ *         USART2 的 RX 一直挂在 HAL_UARTEx_ReceiveToIdle_DMA 上(RxState=BUSY_RX),
  *         而 HAL_UART_GetState() 返回 gState|RxState, 永远不等于 READY -> 一帧都发不出去。
  */
 void Vofa_JF_Send(void)
@@ -123,7 +125,7 @@ void Vofa_JF_Send(void)
     ((uint32_t *)Vofa_Data)[Data_Num + 1] = 0x7f800000;   /* justfloat 帧尾 */
     memcpy(Vofa_Tx_Buf, Vofa_Data, Len);
 
-    if (huart1.gState == HAL_UART_STATE_READY)
+    if (huart2.gState == HAL_UART_STATE_READY)
     {
         if (Vofa_Send(Vofa_Tx_Buf, Len) == HAL_OK) Vofa_Send_Count++;
         else                                      Vofa_Drop_Count++;

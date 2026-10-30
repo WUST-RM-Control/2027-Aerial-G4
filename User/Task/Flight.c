@@ -1,6 +1,12 @@
 /**
  * @file  Flight.c
- * @brief 飞行主循环: TIM6 4kHz 节拍 -> 二值信号量 -> 单一任务里顺序执行
+ * @brief 飞行主循环: TIM6 2kHz 节拍 -> 二值信号量 -> 单一任务里顺序执行
+ *
+ *  频率关系(三者都是 2kHz, 但时钟源不同):
+ *    TIM6 节拍 2kHz(500us)  /  陀螺 ODR 2000Hz  /  加速度 ODR 1600Hz
+ *    姿态解算只在“来了新陀螺样本”时推进一次, dt 用样本时间戳算(见 INS.c),
+ *    所以本循环即使将来提到 4kHz, 也不会让姿态积分变快/变准 —— 传感器上限
+ *    已经定死了。循环率再提高只对控制内环(1000~2000Hz)有意义。
  *
  *  为什么用二值信号量而不是任务通知:
  *    1) 不需要 xTaskGetCurrentTaskHandle()
@@ -9,7 +15,7 @@
  *       不会出现"攒了 3 个信号连跑 3 拍补课"的雪崩。
  *
  *  节拍精度:
- *    TIM6 由硬件产生 250us 周期, 抖动 = 中断响应 + 上下文切换(约 2~5us),
+ *    TIM6 由硬件产生 500us 周期, 抖动 = 中断响应 + 上下文切换(约 2~5us),
  *    比 osDelay(1) 的 tick 抖动小一个数量级。
  */
 #include "Flight.h"
@@ -73,7 +79,7 @@ void Flight_Task(void const *argument)
         Control_Update();       /* 摇杆 -> 姿态环 -> 角速度环 -> 混控 -> DShot */
         t1 = DWT->CYCCNT;
 
-        /* 单拍耗时(us): 250us 的预算还剩多少, 直接看这里 */
+        /* 单拍耗时(us): 500us 的预算还剩多少, 直接看这里 */
         used_us = (float)(t1 - t0) * (1000000.0f / (float)SystemCoreClock);
         Flight_LoopTime_us = used_us;
         if (used_us > Flight_LoopTimeMax_us) Flight_LoopTimeMax_us = used_us;

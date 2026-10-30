@@ -2,12 +2,12 @@
 #define __IMU_CAL_H__
 
 #include "main.h"
+#include "Parameter.h"   /* IMU_CAL_* 全部可调参数见 Parameter.h 第 3 节 */
 
 /* ============================ 数学/数值配置 ============================
- * IMU_CAL_USE_DOUBLE=1: 拟合/旋转用 double(双精度, 精度优先);
+ * IMU_CAL_USE_DOUBLE(见 Parameter.h 第 3 节)=1: 拟合/旋转用 double(精度优先);
  * =0: 用 float(单精度FPU, 更快)。实时/逐帧路径始终为 float。
  * ====================================================================== */
-#define IMU_CAL_USE_DOUBLE   1u   /* 0=float(快, 够用); 1=double(更精更慢) */
 
 #if (IMU_CAL_USE_DOUBLE == 1u)
     #define CAL_REAL    double
@@ -19,16 +19,17 @@
     #define CAL_SQRT(x) IMU_Cal_Sqrt_F32(x)
 #endif
 
-/* 1) 日志/调试输出通道
- * 注意(本工程实测): 工程用 ARM Compiler 6 + MicroLIB 且没有重定向 fputc,
- *   printf 被链接成了空实现 —— 输出被丢弃(不会卡死、不会崩, 但也看不到)。
- * 想看零漂校准结果:
- *   (a) 调试器直接看 IMU_Cal_Data.GyroCalBias / GyroCalStd / GyroCalState;
- *   (b) 或把下面改成 USB_Printf(...) 走 USB CDC —— 但必须等
- *       MX_USB_Device_Init() 执行之后才能调用, 否则 CDC_Transmit_FS 会
- *       解引用 pClassData == NULL 直接 HardFault(它没有做空指针检查)。 */
-#define IMU_CAL_DEBUG_EN    0u   /* 1=打印过程调试/操作引导信息(校准需人机交互, 建议开); 0=关闭 */
-#define IMU_CAL_PRINTF(...)     printf(__VA_ARGS__)  /* 底层打印: 见上面说明 */
+/* 1) 日志/调试输出通道 —— 默认全部关闭
+ * ★ 本工程用 ARM Compiler 6 + MicroLIB 且**没有重定向 fputc**，
+ *   printf 会走到未实现的底层输出上：要么输出被丢弃，要么直接卡在里面。
+ *   实测现象：标定跑到 IMU_Cal_Finish() 的 printf 就停住不动了。
+ *   所以这里把 IMU_CAL_PRINTF 整个置空，不再调用任何 printf。
+ * 想看标定结果(不靠打印):
+ *   (a) 调试器直接看 IMU_Cal_Data.Config(Acc_Offset/Acc_Scale/Gyro_Offset/Frame_R)
+ *       以及 GyroCalBias / GyroCalStd / GyroCalState;
+ *   (b) 真需要串口日志时，把下面的 IMU_CAL_PRINTF 换成 USART_Driver.h 里的
+ *       USART1_Printf(需先初始化并启动 USART1 的 DMA), 再打开 IMU_CAL_DEBUG_EN。 */
+#define IMU_CAL_PRINTF(...)                     /* 无输出(未重映射, 见上面说明) */
 #if (IMU_CAL_DEBUG_EN)
     #define IMU_CAL_LOG(...)    IMU_CAL_PRINTF(__VA_ARGS__)  /* 过程信息(可关) */
 #else
@@ -47,31 +48,22 @@
  * 使用方式(一次性, 阻塞执行):
  *   1) 在任务开头(循环之外)调用一次 IMU_Cal();  它内部自动读传感器、
  *      采集姿态、拟合、锁定正面参考面, 校准完成后把参数写入
- *      IMU_Cal_Data.Config 并返回;
+ *      IMU_Cal_Data.Config 并保存到 Flash 并返回;
  *   2) 之后在自己的循环里反复调用
  *      IMU_Cal_Get_Calibrated_Data(&acc,&gyr) 获取校准后的数据
  *      (该函数每次都会内部读一次原始传感器)。
- * 调试信息开关/打印通道等见 IMU_Cal.c 顶部“迁移接口”。
+ * 调试信息开关/输出通道见本文件开头“日志/调试输出通道”(默认全部关闭)。
  * 结果保存在 IMU_Cal_Data.Config, 校准过程中的中间量也统一放在
  * IMU_Cal_Data 内(便于查看与管理)。
  * 单位: 加速度 = m/s^2, 角速度 = rad/s(与 BMI088_Read 输出一致)。
  */
 
 /* ------------------------- 可调参数 ------------------------- */
-#define IMU_CAL_POSE_MIN           6u      /* 最少姿态数(一般六个面即可)   */
-#define IMU_CAL_POSE_MAX           12u     /* 姿态数上限, 达到后强制完成       */
-#define IMU_CAL_POSE_SEP_COS       0.9511f /* cos(18°): 两个姿态之间的最小夹角 */
-#define IMU_CAL_STATIC_SETTLE_MS   500u    /* 判定静止后的稳定等待时长         */
-#define IMU_CAL_ACCUM_MS           1500u    /* 单个姿态的采样平均时长           */
-#define IMU_CAL_MOVE_RAD_S         0.3f   /* 陀螺角速度小于该值视为静止       */
-#define IMU_CAL_ACC_NORM_MIN       8.0f    /* 静止时 |加速度| 的范围下限(m/s^2)*/
-#define IMU_CAL_ACC_NORM_MAX       11.5f   /* 静止时 |加速度| 的范围上限(m/s^2)*/
-#define IMU_CAL_G_REF              9.8f    /* 参考重力加速度, 用于归一化尺度   */
-#define IMU_CAL_RESID_TOL          0.5f    /* 各姿态校准模长的最大离散容差     */
+/* 姿态采集与零漂校定的具体数值全部在 Parameter.h 第 3 节 */
 
 /* ------------------- 陀螺零漂校准(后台运行, 不阻塞) -------------------
- * 为什么: 陀螺零漂随温度/上电时刻而变化, 代码里固化的 Gyro_Offset 只是
- *   标定那一刻的快照。零漂直接进姿态角积分, 0.01 rad/s 就是约 0.6°/s
+ * 为什么: 陀螺零漂随温度/上电时刻而变化, 保存在 Flash 里的 Gyro_Offset
+ *   只是标定那一刻的快照。零漂直接进姿态角积分, 0.01 rad/s 就是约 0.6°/s
  *   的 Yaw 漂移, 所以上电后重新实测一次很有价值。
  * 怎么做: 不在任务里阻塞等静止(那样上电时被搬动就会把任务卡在初始化
  *   里, 而且开机第一帧 dt 会异常大), 而是挂在 INS 主循环里后台跑:
@@ -83,16 +75,6 @@
  * 注意: MOVE_RAD_S 越小越严。缓慢匀速转动产生的方差很小(标准差查不
  *   出来), 却会给均值带来转速偏置, 所以这个门限要保持小。
  * ------------------------------------------------------------------ */
-#define IMU_CAL_GYRO_CAL_EN         1u      /* 1=上电后台自动校准陀螺零漂            */
-#define IMU_CAL_GYRO_CAL_SAMPLES    2000u   /* 一批静止样本数(4kHz 循环 → 约0.5s) */
-#define IMU_CAL_GYRO_CAL_SETTLE_MS  200u    /* 判定静止后先丢弃的过渡时间(ms)        */
-#define IMU_CAL_GYRO_CAL_BUDGET_MS  5000u   /* 总时间预算: 超时则放弃(ms)            */
-#define IMU_CAL_GYRO_CAL_RETRY_MAX  5u      /* 质检不过最多重试几批                 */
-#define IMU_CAL_GYRO_CAL_MOVE_RAD_S 0.3f   /* 任一轴角速度超此值即认为在动(rad/s)   */
-#define IMU_CAL_GYRO_CAL_MAX_STD    0.1f   /* 每轴标准差上限(rad/s), 超了认为抖动   */
-#define IMU_CAL_GYRO_CAL_MAX_DEV    0.3f    /* 与固化零漂的最大合理偏差(rad/s, ≈11dps)*/
-#define IMU_CAL_GYRO_CAL_AUTO_RETRY_EN   1u /* 放弃后是否隔一段自动再试(非阻塞)      */
-#define IMU_CAL_GYRO_CAL_RETRY_PERIOD_MS 1000u /* 自动重试间隔(ms)                    */
 
 /* 总体运行状态 */
 typedef enum
@@ -155,8 +137,8 @@ typedef __PACKED_STRUCT
     uint8_t  GyroCalState;    /* 状态机, 见 IMU_Cal_GyroCal_State_e           */
     uint8_t  GyroCalValid;    /* 锁存: 1=本次上电已有“实测出来并生效”的零漂。
                                  只在实测成功时置 1, 重新标定/中间失败都不会
-                                 清 0(防飞行中忽然失锁); 只有加载固化值
-                                 (IMU_Cal_Load_Config)或复位时才清 0 */
+                                 清 0(防飞行中忽然失锁); 只有加载 Flash 里的
+                                 标定值(IMU_Cal_Load_Config)或复位时才清 0 */
     uint8_t  GyroCalRetry;    /* 质检不过已重试的批数                         */
     uint32_t GyroCalStartMs;  /* 本轮开始时刻; 放弃时改写为放弃时刻(预算/自动重试计时) */
     uint32_t GyroCalSettleMs; /* 最近一次“判定静止”的时刻                      */
@@ -178,10 +160,10 @@ void    IMU_Cal_Gyro_Bias_Update(void);    /* 每帧调用一次: 后台累计/�
 void    IMU_Cal_Gyro_Bias_Restart(void);   /* 重新开始一轮(例如解锁前确认静止时)         */
 uint8_t IMU_Cal_Gyro_Bias_Is_Valid(void);  /* 1=本次上电实测的零漂已生效 !! 可用于禁止起飞条件 */
 
-/* ---- 校准参数 保存/加载 ---- */
-uint8_t IMU_Cal_Load_Config(void);                            /* 加载校准参数: 仅从 NVS 读取(1=有记录并已应用)    */
-void    IMU_Cal_Save_Config(void);                            /* 保存当前校准参数到 NVS(校准完成后调用)              */
-void    IMU_Cal_Reset_Config(void);                           /* 清除当前参数并抹除 NVS 记录, 立即回到未校准         */
+/* ---- 校准参数 保存/加载(唯一来源 = Flash 最后一页) ---- */
+uint8_t IMU_Cal_Load_Config(void);                            /* 从 Flash 读标定记录(1=有有效记录并已应用, 0=没有)  */
+uint8_t IMU_Cal_Save_Config(void);                            /* 把当前参数写入 Flash(1=擦写+回读校验成功)            */
+void    IMU_Cal_Reset_Config(void);                           /* 清除内存参数, 回到未校准(原始直通)                  */
 
 /* ---- 平台接口(可在其它模块直接使用/迁移时替换) ---- */
 void    IMU_Cal_Read_Raw(float acc[3], float gyr[3]);          /* 读最新原始 acc(m/s2)/gyr(rad/s) */
@@ -200,6 +182,6 @@ uint8_t IMU_Cal_GaussSolve(const CAL_REAL *N, const CAL_REAL *rhs, CAL_REAL *x, 
 uint8_t IMU_Cal_Fit_Accel(void);                               /* 两步法拟合 acc 零偏/比例(写Config) */
 uint8_t IMU_Cal_Compute_Frame(void);                           /* 由正面参考构造旋转矩阵 Frame_R     */
 uint8_t IMU_Cal_Try_Fit(void);                                 /* 姿态够则尝试拟合, 返回是否成功     */
-void    IMU_Cal_Finish(void);                                  /* 收尾: 零漂/标志/打印校准值         */
+void    IMU_Cal_Finish(void);                                  /* 收尾: 陀螺零漂/完成标志(不打印)    */
 
 #endif

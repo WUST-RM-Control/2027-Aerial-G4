@@ -1,8 +1,8 @@
 /**
  * @file  Flight.h
- * @brief 飞行主循环节拍: TIM6 4kHz -> 信号量 -> 单一 Flight 任务
+ * @brief 飞行主循环节拍: TIM6 2kHz -> 信号量 -> 单一 Flight 任务
  *
- *  一拍(250us)内的顺序固定为:
+ *  一拍(500us)内的顺序固定为:
  *      INS_Update()      读IMU/校准/陀螺滤波/EKF/姿态
  *      Control_Update()  摇杆->姿态环->角速度环->混控->DShot 输出
  *
@@ -19,10 +19,7 @@
 #define __FLIGHT_H__
 
 #include "main.h"
-
-/* 飞行主循环频率: TIM6 = 170MHz/(169+1)/(249+1) = 4kHz, 与 tim.c 的 MX_TIM6_Init 对应 */
-#define FLIGHT_LOOP_HZ      4000u
-#define FLIGHT_LOOP_DT      (1.0f / (float)FLIGHT_LOOP_HZ)     /* 0.25ms */
+#include "Parameter.h"   /* FLIGHT_LOOP_HZ / FLIGHT_LOOP_DT 在 Parameter.h 的"系统节拍"节 */
 
 /* ISR 侧: 只发信号量, 不做任何计算(在 TIM6_DAC_IRQHandler 里调用) */
 void Flight_Timer_ISR(void);
@@ -30,10 +27,10 @@ void Flight_Timer_ISR(void);
 /* 任务主体(osThreadDef 入口) */
 void Flight_Task(void const *argument);
 
-/* 单拍耗时统计: 调试器/Vofa 直接看, 用来判断 250us 还够不够 */
+/* 单拍耗时统计: 调试器/Vofa 直接看, 用来判断 500us 还够不够 */
 extern volatile uint32_t Flight_LoopCount;        /* 已执行拍数                    */
 extern volatile float    Flight_LoopTime_us;      /* 最近一拍执行耗时(us)          */
 extern volatile float    Flight_LoopTimeMax_us;   /* 上电以来最大单拍耗时(us)      */
-extern volatile uint32_t Flight_LoopOverRun;      /* 超过 250us 的拍数             */
+extern volatile uint32_t Flight_LoopOverRun;      /* 超过 1/FLIGHT_LOOP_HZ 的拍数   */
 
 #endif /* __FLIGHT_H__ */

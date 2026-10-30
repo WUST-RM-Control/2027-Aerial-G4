@@ -66,6 +66,21 @@ compile_commands.json
 # 工程内部缓存文件，由 .ioc 再生成（.ioc 本身要提交！）
 .mxproject
 
+# ---------- 构建日志 / 调试临时文件 ----------
+# Keil 命令行编译(`UV4 -b ... -o <log>`)生成的日志, 每次编译都变, 不要入库
+MDK-ARM/_build.txt
+build_output.txt
+# EmberProbe 的调试状态快照(本地生成)
+.dbgstatus.txt
+*.log.lock
+
+# ---------- EmberProbe / Agent 技能工具链的运行时产物 ----------
+# (.agents/ 下的 skill 脚本本身纳入版本管理, 这里只忽略运行产物)
+.agents/**/node_modules/
+.agents/**/__pycache__/
+.agents/**/.cache/
+.agents/**/*.log
+
 # ---------- 杂项 ----------
 *.log
 *.swp

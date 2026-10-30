@@ -1,8 +1,6 @@
 #include "PID.h"
 #include "DWT.h"
-
-#define PID_DT_DEFAULT      0.00025f /* 默认标称控制周期(s): 4kHz(250us), 仅作 dt 异常时的兜底 */
-#define PID_D_LPF_DEFAULT   100.0f   /* D 项低通默认截止频率(Hz), 0=关闭 D */
+#include "Parameter.h"   /* PID_DT_DEFAULT / PID_D_LPF_DEFAULT 见 Parameter.h 第 5 节 */
 
 #ifndef PI
 #define PI                  3.14159265358979f

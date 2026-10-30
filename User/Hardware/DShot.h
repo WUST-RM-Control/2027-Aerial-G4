@@ -4,11 +4,11 @@
 #include "main.h"
 
 /*==============================================================================
- *  DShot600 电调输出驱动 (TIM4 CH1~CH4 + DMA)
- *  引脚: PB6 = TIM4_CH1, PB7 = TIM4_CH2, PB8 = TIM4_CH3, PB9 = TIM4_CH4
+ *  DShot600 电调输出驱动 (TIM2 CH1~CH4 + DMA)
+ *  引脚: PA0 = TIM2_CH1, PA1 = TIM2_CH2, PA2 = TIM2_CH3, PA3 = TIM2_CH4
  *
  *  定时器时序(CubeMX 配置):
- *      TIM4 时钟      : 170MHz (APB1 Timer Clock)
+ *      TIM2 时钟      : 170MHz (APB1 Timer Clock)
  *      计数频率       : 170MHz / (13+1) = 12.143MHz
  *      1 个 PWM 周期  : 20 个计数 = 1.647us  ->  607kHz ≈ DShot600 (600kHz, 快 1.2%)
  *      一个 PWM 周期 = 一个 bit, 高电平占几个计数决定该 bit 是 0 还是 1
@@ -17,8 +17,9 @@
  *      一帧 = 1 拍同步低 + 16bit 数据 + 4 拍帧间隔 = 21 个 PWM 周期 ≈ 34.6us
  *
  *  DMA: 4 路各占一个 DMA 通道(DMA1_CH6/CH7/CH8 + DMA2_CH1),
- *       触发源 = TIM4_CHx 的比较(CC)事件, 每来一次事件搬一个 CCR 值 = 一个 bit
+ *       触发源 = TIM2_CHx 的比较(CC)事件, 每来一次事件搬一个 CCR 值 = 一个 bit
  *      ⚠ 方向必须是 存储器 -> 外设(MEMORY_TO_PERIPH), 否则发不出任何东西
+ *      ⚠ DMA 数据宽度必须是 HALFWORD(CCR 是半字缓冲), 见 .ioc 的 TIM2_CHx 配置
  *============================================================================*/
 
 #define DSHOT_MOTOR_NUM     4       /* 电机(电调)路数 */
@@ -35,7 +36,7 @@
 #define DSHOT_THROTTLE_MIN  48
 #define DSHOT_THROTTLE_MAX  2047
 
-void DShot_Init(void);                                      /* 初始化输出(TIM4 启动 + DMA 回调) */
+void DShot_Init(void);                                      /* 初始化输出(TIM2 启动 + DMA) */
 void DShot_Set_Value(uint8_t Motor_ID, uint16_t Value);     /* 写帧缓冲(不立即发送) */
 void DShot_Set_Duty(uint8_t Motor_ID, float Duty_100);      /* 占空比 0~100 -> 油门值 */
 void DShot_Send(void);                                      /* 4 路同时发一帧 */

@@ -1,224 +1,104 @@
 #include "Sensor.h"
 
-#include "PMW3901.h"
-#include "SPA06.h"
-#include "VL53L1.h"
+#include "Parameter.h"
+#include "BMP581.h"
+#include "BMI088.h"
+#include "Heater.h"
 #include "Buzzer.h"
-#include "INS.h"
 #include "Control.h"
-
-#include "math.h"   // fabsf
 
 
 Sensor_StructTypedef Sensor;
-
-#define SENSOR_TAU_VBAT          0.5f   //电池电压一阶低通时间常数(s)
-#define SENSOR_VBAT_VALID_MIN    1.5f   /* 低于此视为无效(转换未完成/未接电池), 不参与滤波 */
 
 uint32_t Sensor_Task_Ticker;
 float Sensor_Task_Dt;
 void Sensor_Task(void *argument)
 {
     HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED); //ADC
-    PMW3901_Init();   // SPI1 -> 模式3
-    SPA06_Init();     // I2C3 由 main.c 的 MX_I2C3_Init() 初始化
-    VL53L1_Init();    // 写默认配置+一次自检, 耗时较长
-    
+    BMP581_Init();    // V3: 气压计改成 BMP581(SPI1 + PB1 数据就绪中断)
+    Heater_Init();    // IMU 恒温加热: TIM4_CH1 单脉冲窗口, 默认关闭输出
+
     DWT_GetDeltaT(&Sensor_Task_Ticker);
-    
+
     for(;;)
-    {     
+    {
         Sensor_Task_Dt = DWT_GetDeltaT(&Sensor_Task_Ticker);
-        
-        //获取传感器数据
-        PMW3901_Read_Data();   // 光流原始计数
-        SPA06_Read_Data();     // 气压Pa/温度/海拔
-        // VL53L1 在下面的 TOF 高度处读: 只有拿到新样本才做卡尔曼更新
-        
-        //电池电压采集
-        HAL_ADC_Start(&hadc2);
-        Filter_LowPass((HAL_ADC_GetValue(&hadc2) * 3.3f/4096.0f * 3.0f), &Sensor.BatV, SENSOR_TAU_VBAT, Sensor_Task_Dt);
-        
-        //光流数据
-        Sensor.Flow_Pix_Vx = -PMW3901.Delta_X / Sensor_Task_Dt;
-        Sensor.Flow_Pix_Vy = PMW3901.Delta_Y / Sensor_Task_Dt;
-        
-        //气压计数据
-        Bar_Update(&Sensor.Bar_Height_mm, &Sensor.Bar_Height_Speed_mm, SPA06.Relative_Height_mm, Sensor_Task_Dt);
-        
-        //TOF数据: 只有拿到"新样本"才更新(TOF ~30Hz, 任务是 ~48Hz),
-        //         dt 必须用"两次新样本的时间差", 不能用任务周期
+
+        //获取传感器数据(只有 INT 引脚来了新样本才真正读 SPI, 见 BMP581.c)
+        BMP581_Read_Data();    // 气压Pa/温度/海拔/相对高度
+
+        //电池电压采集(单次转换: 先等 EOC 再读, 否则读到的是上一次的结果)
         {
-            static uint32_t TOF_LastMs = 0;
+            static uint8_t  LowVoltAlarm = 0;
+            static uint32_t AlarmStartMs = 0;
 
-            if (VL53L1_Read_Data())     /* 非阻塞: 未就绪立即返回 0 */
+            if (AlarmStartMs == 0u) AlarmStartMs = HAL_GetTick();
+
+            HAL_ADC_Start(&hadc2);
+            if (HAL_ADC_PollForConversion(&hadc2, 5u) == HAL_OK)
             {
-                uint32_t now_ms = HAL_GetTick();
-                float dt_tof = (TOF_LastMs != 0u) ? ((float)(now_ms - TOF_LastMs) * 0.001f) : 0.033f;
-                TOF_LastMs = now_ms;
+                float bat_v = HAL_ADC_GetValue(&hadc2) * 3.3f / 4096.0f * 3.0f;
+                Filter_LowPass(bat_v, &Sensor.BatV, SENSOR_TAU_VBAT, Sensor_Task_Dt);
+            }
+            HAL_ADC_Stop(&hadc2);
 
-                /* 倾斜补偿的 cos(倾角) 由四元数给出: 机体Z轴在导航系下的Z分量(=INS.zn[2]),
-                 * 大角度/倒扣时不会像欧拉角那样折叠, 也不会在中途失效 */
-                TOF_Update(&Sensor.TOF_Height_mm, &Sensor.TOF_Height_Speed_mm,
-                           VL53L1.Distance_mm, INS.zn[2], dt_tof);
+            /* 低电压告警: 只在"刚进入低电压"时响一次, 回到 7.3V 以上才复位。
+             * 原来每 20ms 重设一次音效, 会让蜂鸣器卡在同一个音上一直响。
+             * 上电前 3s 不报警: 滤波从 0 爬升到真实电压的过程会经过 5~7V。 */
+            if (LowVoltAlarm)
+            {
+                if ((Sensor.BatV > 7.3f) || (Sensor.BatV < 5.0f)) LowVoltAlarm = 0;
+            }
+            else if (((uint32_t)(HAL_GetTick() - AlarmStartMs) > 3000u) &&
+                     (Sensor.BatV <= 7.0f) && (Sensor.BatV >= 5.0f))
+            {
+                LowVoltAlarm = 1;
+                Buzzer_Set_SoundEffect(Buzzer_SoundEffect_Aim_ON);
             }
         }
-        
-        //高度数据融合
-//        Sensor.Height_mm       = Sensor.Bar_Height_mm;
-//        Sensor.Height_Speed_mm = Sensor.Bar_Height_Speed_mm;
-        Sensor.Height_mm       = Sensor.TOF_Height_mm;
-        Sensor.Height_Speed_mm = Sensor.TOF_Height_Speed_mm;
-        
-        
-        //光流数据处理
-        Sensor_Flow_Update(&Sensor.Vel_X_mm, &Sensor.Vel_Y_mm,
-                            Sensor.Flow_Pix_Vx, Sensor.Flow_Pix_Vy, PMW3901.SQUAL,
-                            Sensor.TOF_Height_mm, -INS.Roll_Speed*Angle2Rad, INS.Pitch_Speed*Angle2Rad,
-                            Sensor_Task_Dt);
 
-        //低电压警告
-        if(Sensor.BatV <= 7.0f && Sensor.BatV >= 5.0f) Buzzer_Set_SoundEffect(Buzzer_SoundEffect_Aim_ON);
-        
+        //气压计数据
+        Bar_Update(&Sensor.Bar_Height_mm, &Sensor.Bar_Height_Speed_mm, BMP581.Relative_Height_mm, Sensor_Task_Dt);
+
+        /* IMU 恒温加热(40℃闭环): 每 20ms 一拍, 内部自带全部保护 */
+        Heater_Update(Sensor_Task_Dt);
+
+        /* V3 控制板上没有光流(PMW3901)和 TOF(VL53L1): 高度只用气压计,
+         * 水平速度没有观测量, 保持 0(定点模式会退化成"定点姿态保持")。 */
+        Sensor.Height_mm       = Sensor.Bar_Height_mm;
+        Sensor.Height_Speed_mm = Sensor.Bar_Height_Speed_mm;
+        Sensor.Vel_X_mm        = 0.0f;
+        Sensor.Vel_Y_mm        = 0.0f;
+
+        //低电压告警在电池电压采集处处理(边沿触发), 这里不再重复设置
+
         osDelay(20);
-        
+
+    }
+}
+
+/*============================================================================
+ *  传感器 INT 引脚统一回调(PB1 / PA9 / PA10 都走这里)
+ *    只置标志/计数, 不在这里做 SPI, 由对应任务去读
+ *===========================================================================*/
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    switch (GPIO_Pin)
+    {
+    case BPS_INT_Pin:       BMP581_INT_Callback();      break;  /* 气压计数据就绪 */
+    case IMU_INT_ACC_Pin:   BMI088_INT_Acc_Callback();  break;  /* 加速度计数据就绪 */
+    case IMU_INT_GYRO_Pin:  BMI088_INT_Gyro_Callback(); break;  /* 陀螺仪数据就绪 */
+    default: break;
     }
 }
 
 
-
-#define SENSOR_TAU_Bar             0.3f   //气压高度一阶低通时间常数(s)
-#define SENSOR_TAU_Bar_Speed       0.2f   //气压速度一阶低通时间常数(s)
-#define SENSOR_Fan_K               13.44f   //高度随转速的补偿比例(mm/1%)
 void Bar_Update(float *Bar_Height_Out, float *Bar_Height_Speed_Out, float Bar_Height, float Dt)
 {
     static float Out_Height_Last;
     float Average_Thrust = (Control.Duty[0] + Control.Duty[1] + Control.Duty[2] + Control.Duty[3]) / 4.0f;
-    
-    Filter_LowPass((Bar_Height - SENSOR_Fan_K * Average_Thrust), Bar_Height_Out, SENSOR_TAU_Bar, Sensor_Task_Dt);
-    Filter_LowPass(((*Bar_Height_Out - Out_Height_Last) / Dt), Bar_Height_Speed_Out, SENSOR_TAU_Bar_Speed, Dt);
-    
+
+    Filter_LowPass((Bar_Height - SENSOR_FAN_K * Average_Thrust), Bar_Height_Out, SENSOR_TAU_BAR, Sensor_Task_Dt);
+    Filter_LowPass(((*Bar_Height_Out - Out_Height_Last) / Dt), Bar_Height_Speed_Out, SENSOR_TAU_BAR_SPEED, Dt);
     Out_Height_Last = *Bar_Height_Out;
-}
-
-
-
-/* ================= TOF 高度卡尔曼滤波参数(集中在这里调) =================
- * 状态 x = [高度(mm), 速度(mm/s)]^T, F = [1 Dt; 0 1], 量测 z = 倾角补偿后的测距高度
- *
- * ① 平滑 / 跟随的权衡(R 与 Q 之比):
- *      SENSOR_TOF_MEAS_STD 调大 => 更信模型: 高度/速度更平滑, 但跟随更慢
- *      SENSOR_TOF_ACC_STD  调大 => 更信量测: 跟随更快, 但高度/速度更抖
- * ② 保护: 倾角过大时限制 cos 放大; 量程外的测距值直接丢弃
- *    调用约定: 只在“拿到新样本”时调用一次, Dt 用两次新样本的时间差(~33ms)
- * ======================================================================= */
-#define SENSOR_TOF_MEAS_STD        5.0f    //高度量测噪声标准差(mm): 测距噪声+倾角补偿残差   [大=平滑]
-#define SENSOR_TOF_ACC_STD         200.0f   //垂直加速度过程噪声标准差(mm/s^2)             [大=跟随快]
-#define SENSOR_TOF_RANGE_MAX       4000.0f  //有效量程(mm): 0(未出数据)/超量程按无效量测丢弃
-#define SENSOR_TOF_MIN_COS_TILT    0.174f   //cos(80°): 倾角过大/倒扣时的放大上限, 防高度炸开
-
-void TOF_Update(float *TOF_Height_Out, float *TOF_Height_Speed_Out, float TOF_Distence,
-                      float Cos_Tilt, float Dt)
-{
-    static float Height_NoFilter;      //状态量1: 高度估计(mm)
-    static float Speed_NoFilter;       //状态量2: 速度估计(mm/s)
-    static float P00, P01, P10, P11;   //状态协方差矩阵 P(k|k)
-    static uint8_t KF_Inited;          //首个有效量测用来初始化状态, 避免从0慢慢收敛
-    
-    
-    Limit_float(&Dt, 1, 0.001f);
-    
-    /* 倾角补偿: 测距沿机体Z轴, 竖直高度 = d * cos(倾角) */
-    float cos_tilt = Cos_Tilt;
-    if (cos_tilt < SENSOR_TOF_MIN_COS_TILT) cos_tilt = SENSOR_TOF_MIN_COS_TILT;
-    float Height = TOF_Distence * cos_tilt;
-    
-    /* 量测有效性: 参考值10/超量程(如65535)直接丢弃, 不做任何修正, 防止把高度带飞 */
-    uint8_t Meas_Valid = (TOF_Distence > 10 && TOF_Distence <= SENSOR_TOF_RANGE_MAX) ? 1 : 0;
-    
-    /* ========================= 卡尔曼滤波 =========================
-     * x = [高度; 速度], F = [1 Dt; 0 1], H = [1 0](量测即倾角补偿后的高度) */
-    
-    //0. 首次拿到有效量测: 用它初始化状态与协方差(原来是积分高度从0慢慢收敛)
-    if(!KF_Inited && Meas_Valid)
-    {
-        Height_NoFilter = Height;
-        Speed_NoFilter  = 0;
-        P00 = SENSOR_TOF_MEAS_STD * SENSOR_TOF_MEAS_STD;            //高度方差: 量测噪声量级
-        P11 = SENSOR_TOF_ACC_STD * SENSOR_TOF_ACC_STD * Dt * Dt;    //速度方差: 单帧速度噪声量级
-        P01 = 0; P10 = 0;
-        KF_Inited = 1;
-    }
-    
-    //1. 状态预测 x(k|k-1) = F·x(k-1|k-1): 高度按速度外推, 速度不变
-    Height_NoFilter += Speed_NoFilter * Dt;
-    
-    //2. 协方差预测 P(k|k-1) = F·P(k-1|k-1)·F' + Q, Q由加速度白噪声离散化
-    float Q_Pos   = 0.25f * Dt*Dt*Dt*Dt * SENSOR_TOF_ACC_STD * SENSOR_TOF_ACC_STD;
-    float Q_Cross = 0.5f  * Dt*Dt*Dt    * SENSOR_TOF_ACC_STD * SENSOR_TOF_ACC_STD;
-    float Q_Speed =         Dt*Dt       * SENSOR_TOF_ACC_STD * SENSOR_TOF_ACC_STD;
-    float P_Pos   = P00 + Dt * (P10 + P01) + Dt*Dt * P11 + Q_Pos;
-    float P_Cross = P01 + Dt * P11 + Q_Cross;
-    float P_Speed = P11 + Q_Speed;
-    
-    //3. 量测更新: S = H·P·H' + R, K = P·H'/S; 量测 = 倾角补偿高度 + 反射面基准偏置
-    if(Meas_Valid)
-    {
-        float S = P_Pos + SENSOR_TOF_MEAS_STD * SENSOR_TOF_MEAS_STD;    //新息协方差
-        float Innovation = Height - Height_NoFilter;                    //新息 z - H·x(k|k-1)
-        float K_Pos   = P_Pos   / S;                                    //高度增益
-        float K_Speed = P_Cross / S;                                    //速度增益
-        
-        Height_NoFilter += K_Pos   * Innovation;
-        Speed_NoFilter  += K_Speed * Innovation;
-        
-        //P(k|k) = (I - K·H)·P(k|k-1)
-        P00 = (1.0f - K_Pos) * P_Pos;
-        P01 = (1.0f - K_Pos) * P_Cross;
-        P10 = P01;
-        P11 = P_Speed - K_Speed * P_Cross;
-    }
-    
-    if(!Meas_Valid) //量测被剔除: 只保留预测结果, 等下一个量测
-    {
-        P00 = P_Pos; P01 = P_Cross; P10 = P_Cross; P11 = P_Speed;
-    }
-       
-    
-    /* 输出 */
-    *TOF_Height_Out       = Height_NoFilter;
-    *TOF_Height_Speed_Out = Speed_NoFilter;
-}
-
-
-
-#define SENSOR_FLOW_RAD_PER_COUNT   0.001936f ;     /* rad/count: 实测标定(0.0209/9.36), 原地转动 flow≈body */
-#define SENSOR_FLOW_SQUAL_MIN      90               /* 表面质量低于此判无效(0~169, >50可靠) */
-#define SENSOR_FLOW_TAU            0.2f             /* 输出一阶低通时间常数(s) */
-#define SENSOR_FLOW_Max_Vel        4000             /* 最大速度mm/s */    
-
-void Sensor_Flow_Update(float *Vx_out, float *Vy_out, 
-                        float Pix_Vx, float Pix_Vy, float Squal,
-                        float Height_mm, float Body_Gyro_X_rad, float Body_Gyro_Y_rad, 
-                        float dt)
-{
-    if (dt < 0.001f) dt = 0.001f;   // 兜底
-
-    /* 光流像素速率 -> 角速率(rad/s) */
-    float Flow_Vx_rad = Sensor.Flow_Pix_Vx * SENSOR_FLOW_RAD_PER_COUNT;
-    float Flow_Vy_rad = Sensor.Flow_Pix_Vy * SENSOR_FLOW_RAD_PER_COUNT;
-
-    /* 表面质量低(离地太近/纹理差/失锁)时不更新, 速度向0缓慢衰减 */
-    if ((Squal < SENSOR_FLOW_SQUAL_MIN) || (Height_mm < 50.0f))
-    {
-        Filter_LowPass(0, Vx_out, SENSOR_FLOW_TAU, dt);
-        Filter_LowPass(0, Vy_out, SENSOR_FLOW_TAU, dt);
-    }
-    else
-    {
-        Filter_LowPass(((Flow_Vx_rad - Body_Gyro_X_rad) * Height_mm), Vx_out, SENSOR_FLOW_TAU, dt);
-        Filter_LowPass(((Flow_Vy_rad - Body_Gyro_Y_rad) * Height_mm), Vy_out, SENSOR_FLOW_TAU, dt);
-    }
-    Limit_float(Vx_out, SENSOR_FLOW_Max_Vel, -SENSOR_FLOW_Max_Vel);
-    Limit_float(Vy_out, SENSOR_FLOW_Max_Vel, -SENSOR_FLOW_Max_Vel);
 }

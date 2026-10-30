@@ -2,8 +2,7 @@
 #define __VOFA_H__
 
 #include "main.h"
-
-#define VOFA_CH_MAX     16      /* 最多 16 个 float 通道(VOFA+ justfloat 格式) */
+#include "Parameter.h"   /* VOFA_SEND_HZ / VOFA_CH_MAX 见 Parameter.h 第 7 节 */
 
 /*============================================================================
  *  发送节拍: 独立于飞行主循环(TIM6), 由 TIM7 单独产生
@@ -18,7 +17,7 @@
  *  实际的发送次数看 Vofa_Tick_Count, 真正发出去的帧数看 Vofa_Send_Count
  *  (只有当帧间隔比 UART 发送耗时还短时两者才会不一致, 差值记在 Vofa_Drop_Count)。
  *===========================================================================*/
-#define VOFA_SEND_HZ        1000u
+
 
 void Vofa_JF_Add_Data(uint8_t Index, float Data);
 void Vofa_JF_Send(void);

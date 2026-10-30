@@ -122,8 +122,6 @@ void MX_FREERTOS_Init(void) {
   LEDHandle = osThreadCreate(osThread(LED), NULL);
 
   /* definition and creation of Communicate */
-  /* 4kHz VOFA 发送: 每拍只做一次 memcpy + 启动 DMA(~2us), 但必须能及时抢占
-     低优先级任务, 否则信号量还在挂着就会丢帧 -> 提到 osPriorityHigh */
   osThreadDef(Communicate, Communicate_Task, osPriorityHigh, 0, 512);
   CommunicateHandle = osThreadCreate(osThread(Communicate), NULL);
 
@@ -142,8 +140,6 @@ void MX_FREERTOS_Init(void) {
 /* USER CODE END Header_StartDefaultTask */
 __weak void StartDefaultTask(void const * argument)
 {
-  /* init code for USB_Device */
-  MX_USB_Device_Init();
   /* USER CODE BEGIN StartDefaultTask */
   /* Infinite loop */
   for(;;)

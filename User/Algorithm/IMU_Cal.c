@@ -18,84 +18,162 @@
  * 陀螺仪  : 静止期间陀螺样本均值 -> Gyro_Offset; 角速度也用 R 转到
  *          输出坐标系。
  * 上电零漂: IMU_Cal_Gyro_Bias_Update() 挂在 INS 主循环里后台实测陀螺
- *          零漂并覆盖固化的 Gyro_Offset(零漂随温度/上电时刻漂移, 固化
- *          值只作兜底)。全程非阻塞、每帧 O(1), 且有总时间预算, 因此
- *          不会把任务卡在初始化里; 不静止/噪声过大时自动放弃保留原值。
+ *          零漂并覆盖 Flash 里的 Gyro_Offset(零漂随温度/上电时刻漂移,
+ *          Flash 值只是标定那一刻的快照)。全程非阻塞、每帧 O(1), 且有
+ *          总时间预算, 因此不会把任务卡在初始化里; 不静止/噪声过大时
+ *          自动放弃保留原值。
+ * 参数来源: 代码里没有任何手填的零偏/比例/轴向常量。上电只从 Flash
+ *          最后一页读 IMU_Cal() 标定后保存的那份记录; 读不到(或记录
+ *          不可信)才跑一次交互式 IMU_Cal(), 结束时自动写回 Flash。
+ * 进度提示: 标定过程全程有蜂鸣器提示(串口静默也能用)——
+ *          开始 = 两短一长; 第 1~6 个面 = 低音/高音 1~3 声;
+ *          重力方向锁定 = 长中音; 机头(前向)锁定 = 两短下滑音;
+ *          全部完成并存 Flash = 三音上行。开关见 IMU_CAL_BUZZER_EN。
  * 中间量统一放在 IMU_Cal_Data 内, 便于查看; 参数宏见 IMU_Cal.h。
  * ------------------------------------------------------------------
  */
- #include "IMU_Cal.h"
-
-#include "QMI8658A.h"
+#include "IMU_Cal.h"
+#include "BMI088.h"
+#include "Heater.h"
+#include "Buzzer.h"         /* 校准过程进度提示音 */
+#include "Flash.h"          /* 校准参数持久化(Flash 最后一页 2 KB) */
 
 /* 全局校准数据: 原始数据 + 校准参数(Config) + 校准过程中间量 */
 IMU_Cal_Data_StructTypedef IMU_Cal_Data;
 
-/*    IMU 原始数据读取: 取最新原始数据 acc[3](m/s^2)、gyr[3](rad/s)。
- *    本工程用 BMI088; 换传感器/驱动只改这一个函数即可。 */
-void IMU_Cal_Read_Raw(float acc[3], float gyr[3])
+/* ==================== 标定过程蜂鸣器提示 ====================
+ * IMU_CAL_DEBUG_EN=0 时串口完全静默, 蜂鸣器就是唯一的进度反馈:
+ *   开始标定          : 两短一长(中音上行)
+ *   第 1~6 个面采集完 : 低音 1/2/3 声(前三个面) / 高音 1/2/3 声(后三个面)
+ *   重力方向锁定      : 一个长中音      [正面朝上、水平静止采集完成]
+ *   机头(前向)锁定    : 两短下滑音      [机尾朝下 90° 采集完成]
+ *   全部完成且已存 Flash: 三音上行 + 长音
+ * 都走 Buzzer_Queue_SoundEffect(): 当前若有音效在播不会被丢弃。
+ * 总开关: Parameter.h 的 IMU_CAL_BUZZER_EN。
+ * ---------------------------------------------------------- */
+#if (IMU_CAL_BUZZER_EN == 1u)
+static void IMU_Cal_Beep(Buzzer_SoundEffect_EnumTypedef se)
 {
-    uint8_t i;
-    QMI8658A_Read_Data();
-    for (i = 0; i < 3; i++)
+    Buzzer_Queue_SoundEffect(se);
+}
+
+/* 第 n 个面(1..6); 超过 6 个面的额外姿态不再响, 避免一直叫 */
+static void IMU_Cal_Beep_Pose(uint8_t n)
+{
+    if ((n >= 1u) && (n <= 6u))
     {
-        acc[i] = QMI8658A.Accel[i];
-        gyr[i] = QMI8658A.Gyro[i];
+        Buzzer_Queue_SoundEffect((Buzzer_SoundEffect_EnumTypedef)
+                                 ((uint8_t)Buzzer_SoundEffect_IMU_Cal_Pose1 + (n - 1u)));
     }
 }
 
-/* ==================== 校准参数 固化(直接写死) ====================
- * 下面这组参数是从调试器里读到的 IMU_Cal_Data.Config(已完成校准)。
- * 上电时调用 IMU_Cal_Load_Config() 会直接把它们写入 Config,
- * 从而跳过每次都要手动摆姿势的交互式 IMU_Cal() 校准。
- * 若以后改成 Flash 存储, 把 IMU_Cal_Load_Config() 改为读 Flash 即可。
- * ---------------------------------------------------------------- */
-static const float IMU_Cal_Fixed_Acc_Offset[3]  = { 0.318097115f,    0.248661652f,   -0.460549176f };   /* m/s^2 */
-static const float IMU_Cal_Fixed_Acc_Scale[3]   = { 0.999542296f,    1.007286310f,    0.994732916f  };   /* 比例 */
-static const float IMU_Cal_Fixed_Gyro_Offset[3] = {-0.193535104f,    0.071889825f,   -0.005354360f }; /* rad/s */
-/* ★ 2026-10-19 六面标定结果(已采用):
- *   本次标定的 x_out≈(-1,0,0)、y_out≈(0,-1,0)、z_out≈(0,0,1), 相对旧值绕 Z 转了 90°。
- *   换 R 必须同时换下面三处映射(已同步修改):
- *     INS.c        : Roll_Speed=+g[0], Pitch_Speed=-g[1]; INS.Roll=+QEKF.Pitch, INS.Pitch=-QEKF.Roll
- *     Attitude.c   : Err[0]=+qe[1], Err[1]=-qe[2]
- *     Control.c    : Attitude_Euler2Quat(+Target_Roll, -Target_Pitch, ...)
- *   四处是一个整体, 单独改任一处都会让俯仰/横滚通道转 90° 或反向。 */
-static const float IMU_Cal_Fixed_Frame_R[3][3]  = {
-    {-0.999903083f,  -0.000677173f,  -0.013907298f },
-    { 0.001104711f,  -0.999526262f,  -0.030757340f },
-    {-0.013879882f,  -0.030769721f,   0.999430120f },
-};
-/* 加载固化(或将来从 Flash 读回)的校准参数到 IMU_Cal_Data.Config。
- * 返回 1 = 成功(已应用), 0 = 无可用参数。 */
+/* “全部完成”提示音: 排队区深度只有 1, 先等前一个提示播完再排, 两个都能听清 */
+static void IMU_Cal_Beep_Done(void)
+{
+    (void)Buzzer_Wait_Idle(1500u);
+    Buzzer_Queue_SoundEffect(Buzzer_SoundEffect_IMU_Cal_Done);
+}
+#else
+#define IMU_Cal_Beep(se)        ((void)(se))
+#define IMU_Cal_Beep_Pose(n)    ((void)(n))
+#define IMU_Cal_Beep_Done()     ((void)0)
+#endif
+
+/*    IMU 原始数据读取: 取最新原始数据 acc[3](m/s^2)、gyr[3](rad/s)。
+ *    本工程用 BMI088; 换传感器/驱动只改这一个函数即可。
+ *    注: BMI088_Read_Data() 内部由 INT1/INT3 触发, 没有新样本时不重复读,
+ *        因此这里拿到的是"最近一次真实样本", 不会把同一帧喂两次。 */
+void IMU_Cal_Read_Raw(float acc[3], float gyr[3])
+{
+    uint8_t i;
+    BMI088_Read_Data();
+    for (i = 0; i < 3; i++)
+    {
+        acc[i] = BMI088.Accel[i];
+        gyr[i] = BMI088.Gyro[i];
+    }
+}
+
+/* ============= 校准参数: 唯一来源是 Flash 里的实测标定记录 =============
+ * 代码里不再保留任何手填的零偏/比例/轴向常量 —— 换板换传感器后手填的
+ * 常量与实测对不上, 只会掩盖问题。参数流向只有一条:
+ *   IMU_Cal() 标定完成 -> IMU_Cal_Save_Config() -> Flash 最后一页
+ *   上电 -> IMU_Cal_Load_Config() -> Config_Load() -> IMU_Cal_Data.Config
+ * Flash 里没有有效记录(空/CRC 错/版本不符/内容不合理)时本函数返回 0,
+ * 上层(INS_Init_All)会跑一次交互式 IMU_Cal() 重新标定并写回 Flash。
+ * 陀螺零漂不必手填: 上电后 IMU_Cal_Gyro_Bias_Update() 会后台实测覆盖。
+ * ------------------------------------------------------------------ */
+
+/* 判断 Flash 读回的记录是否像"真标定过"的参数; 1 = 合理
+ * (只做量级/正交性检查, 用来挡住全 0 / 全 1 / 被写坏的记录) */
+static uint8_t IMU_Cal_Config_Is_Sane(const Config_StructTypedef *cfg)
+{
+    uint8_t i;
+
+    if (cfg->Is_Calibrated != 1u) return 0u;
+
+    for (i = 0; i < 3; i++)
+    {
+        /* 比例应在 1 附近(芯片灵敏度误差是百分级, 标歪了也不该超出 2 倍) */
+        if (cfg->Acc_Scale[i] < 0.5f || cfg->Acc_Scale[i] > 2.0f) return 0u;
+        /* 零偏量级: 加速度 < 50 m/s², 陀螺 < 1 rad/s */
+        if (fabsf(cfg->Acc_Offset[i])  > 50.0f) return 0u;
+        if (fabsf(cfg->Gyro_Offset[i]) > 1.0f)  return 0u;
+        /* 旋转矩阵每一行都必须是单位长度 */
+        {
+            float n = IMU_Cal_Sqrt_F32(cfg->Frame_R[i][0] * cfg->Frame_R[i][0] +
+                                       cfg->Frame_R[i][1] * cfg->Frame_R[i][1] +
+                                       cfg->Frame_R[i][2] * cfg->Frame_R[i][2]);
+            if (n < 0.9f || n > 1.1f) return 0u;
+        }
+    }
+    return 1u;
+}
+
+/* 从 Flash 加载校准参数到 IMU_Cal_Data.Config。
+ * 返回 1 = 有有效标定记录且已应用; 0 = 没有(调用方应跑 IMU_Cal())。 */
 uint8_t IMU_Cal_Load_Config(void)
 {
-    memcpy(IMU_Cal_Data.Config.Acc_Offset,  IMU_Cal_Fixed_Acc_Offset,  sizeof(IMU_Cal_Data.Config.Acc_Offset));
-    memcpy(IMU_Cal_Data.Config.Acc_Scale,   IMU_Cal_Fixed_Acc_Scale,   sizeof(IMU_Cal_Data.Config.Acc_Scale));
-    memcpy(IMU_Cal_Data.Config.Gyro_Offset, IMU_Cal_Fixed_Gyro_Offset, sizeof(IMU_Cal_Data.Config.Gyro_Offset));
-    memcpy(IMU_Cal_Data.Config.Frame_R,     IMU_Cal_Fixed_Frame_R,     sizeof(IMU_Cal_Data.Config.Frame_R));
-
-    IMU_Cal_Data.Config.Is_Calibrated = 1;
-    /* 装进来的是固化值, 不是本次实测值 -> 陀螺零漂仍未“标定好”(禁止起飞),
-     * 必须等 IMU_Cal_Gyro_Bias_Update() 实测成功才会置 1 */
+    /* 先回到"未校准"(原始直通): Flash 里没记录时就是这个状态 */
+    memset(&IMU_Cal_Data.Config, 0, sizeof(IMU_Cal_Data.Config));
+    /* 本次上电的零漂还没实测 -> 禁止起飞, 等 Gyro_Bias_Update 成功才放行 */
     IMU_Cal_Data.GyroCalValid = 0u;
 
-    if(IMU_Cal_Data.Config.Is_Calibrated)  return 1;
-    else                                   return 0;
+    if (!Config_Load())                     return 0u;   /* 无记录 / CRC 错 / 版本不符 */
+    if (!IMU_Cal_Config_Is_Sane(&Config))   return 0u;   /* 内容不可信 -> 当作没标定 */
+
+    memcpy(IMU_Cal_Data.Config.Acc_Offset,  Config.Acc_Offset,  sizeof(IMU_Cal_Data.Config.Acc_Offset));
+    memcpy(IMU_Cal_Data.Config.Acc_Scale,   Config.Acc_Scale,   sizeof(IMU_Cal_Data.Config.Acc_Scale));
+    memcpy(IMU_Cal_Data.Config.Gyro_Offset, Config.Gyro_Offset, sizeof(IMU_Cal_Data.Config.Gyro_Offset));
+    memcpy(IMU_Cal_Data.Config.Frame_R,     Config.Frame_R,     sizeof(IMU_Cal_Data.Config.Frame_R));
+    IMU_Cal_Data.Config.Is_Calibrated = 1u;
+
+    IMU_CAL_LOG("[IMUCal] loaded from flash (seq=%u)\r\n", (uint32_t)Config_Seq);
+    return 1u;
 }
    
 
-/* 保存当前校准参数到非易失存储(预留)。
- * 目前参数直接固化在代码里, 尚未实现 Flash 写入。 */
-void IMU_Cal_Save_Config(void)
+/* 保存当前校准参数到 Flash。
+ * ⚠ 内部会擦 Flash 一页, CPU 停顿 20~40 ms, 只允许在地面/解锁前调用。
+ * 返回 1 = 写入并回读校验成功。 */
+uint8_t IMU_Cal_Save_Config(void)
 {
-    /* TODO: 需要持久化时, 在这里把 IMU_Cal_Data.Config 写入 Flash */
+    memcpy(Config.Acc_Offset,  IMU_Cal_Data.Config.Acc_Offset,  sizeof(Config.Acc_Offset));
+    memcpy(Config.Acc_Scale,   IMU_Cal_Data.Config.Acc_Scale,   sizeof(Config.Acc_Scale));
+    memcpy(Config.Gyro_Offset, IMU_Cal_Data.Config.Gyro_Offset, sizeof(Config.Gyro_Offset));
+    memcpy(Config.Frame_R,     IMU_Cal_Data.Config.Frame_R,     sizeof(Config.Frame_R));
+    Config.Is_Calibrated = 1u;
+
+    return Config_Save();
 }
 
-/* 清除当前校准参数并抹除保存值: 立即回到“未校准”(原始直通) */
+/* 清除当前校准参数并抹除保存值: 立即回到"未校准"(原始直通)。
+ * 注意: 只清内存标志; 要真正作废 Flash 里的记录, 清完再调一次 IMU_Cal_Save_Config()。 */
 void IMU_Cal_Reset_Config(void)
 {
     memset(&IMU_Cal_Data.Config, 0, sizeof(IMU_Cal_Data.Config));   /* Is_Calibrated = 0 */
     IMU_Cal_Data.GyroCalValid = 0u;                                 /* 零漂作废 -> 禁止起飞 */
+    Config.Is_Calibrated      = 0u;                                 /* 同步内存 Config, 避免误存 */
 }
 
 /* 单精度平方根: 供实时/每帧采样路径用, 精度同 sqrtf
@@ -223,14 +301,14 @@ uint8_t IMU_Cal_Gyro_Bias_Is_Valid(void)
 /*
  * 后台零漂校准: 放在 INS 主循环里、IMU_Cal_Get_Calibrated_Data() 之后,
  * 每帧调用一次即可(内部自动开始/自动结束)。
- * 数据来源是本帧已经读好的原始值 QMI8658A.Accel/Gyro(芯片坐标),
+ * 数据来源是本帧已经读好的原始值 BMI088.Accel/Gyro(芯片坐标),
  * 所以不会再额外占用 SPI、也不会改变采样节奏。
  */
 void IMU_Cal_Gyro_Bias_Update(void)
 {
 #if (IMU_CAL_GYRO_CAL_EN == 1u)
-    const float *acc = QMI8658A.Accel;
-    const float *gyr = QMI8658A.Gyro;
+    const float *acc = BMI088.Accel;
+    const float *gyr = BMI088.Gyro;
     uint32_t now;
     float    norm, mean[3], sd[3];
     uint8_t  i;
@@ -238,6 +316,18 @@ void IMU_Cal_Gyro_Bias_Update(void)
     if (IMU_Cal_Data.GyroCalState == IMU_CAL_GYROCAL_DONE) return;   /* 已完成, 不再改动 */
 
     now = HAL_GetTick();
+
+    /* ★ 先等 IMU 恒温到 40℃ 再标定零漂: 陀螺零漂随温度变化, 冷机标定完再加热
+     *   会让零漂偏掉(温升十几度时偏量足以引起可见的 Yaw 漂移)。
+     *   最多等 30s; 加热故障/太慢时也照常标定, 绝不长时间阻塞解锁。 */
+    {
+        static uint32_t HeatWaitStartMs = 0;
+        if (HeatWaitStartMs == 0u) HeatWaitStartMs = now;
+        if ((Heater.Fault == HEATER_FAULT_NONE) &&
+            (Heater.Temp_C < (Heater.Target_C - 1.0f)) &&
+            ((uint32_t)(now - HeatWaitStartMs) < 30000u))
+            return;
+    }
 
     /* 上一轮放弃了: 隔 RETRY_PERIOD_MS 自动再试一次(仍然非阻塞, 每帧只判断时间)。
      * 这样上电时被搬动/振动只是“晚一点才好”, 不需要重新上电 */
@@ -368,7 +458,7 @@ void IMU_Cal_Gyro_Bias_Update(void)
  * 校准过程需要一个人配合:
  *   阶段1: 把模块放在不同面/方向并静止, 自动采集 6~12 个互异姿态;
  *   阶段2: 提示后把模块“正面朝上”放到绝对水平面静止, 锁定输出 +z。
- * 本函数阻塞执行, 直到校准完成(写入 Config 并打印校准参数)才返回。
+ * 本函数阻塞执行, 直到校准完成(写入 Config 并保存到 Flash)才返回。
  * 调用方式: 在任务开头(循环之外)调用一次即可; 之后在自己的循环里反复
  *         调用 IMU_Cal_Get_Calibrated_Data() 获取校准后的数据。
  */
@@ -403,6 +493,9 @@ void IMU_Cal(void)
     IMU_CAL_LOG("   '竖直向上'正好指向机头, 于是输出 +x = 机头方向, +y = 左, +z = 上。\r\n");
     IMU_CAL_LOG("   以后重新标定都按这个约定, 否则俯仰/横滚轴会多转 180°。\r\n");
 
+    /* 提示音: 开始标定(两短一长) */
+    IMU_Cal_Beep(Buzzer_SoundEffect_IMU_Cal_Start);
+
     while (!finished)
     {
         const float *acc;
@@ -429,6 +522,8 @@ void IMU_Cal(void)
                     IMU_CAL_LOG("[Cal] pose %u/%u captured  acc=%.3f,%.3f,%.3f\r\n",
                                 (uint32_t)IMU_Cal_Data.PoseCount, (uint32_t)IMU_CAL_POSE_MAX,
                                 mean[0], mean[1], mean[2]);
+                    /* 提示音: 第 n 个面(低音/高音 1~3 声), 听到就知道这个面采完了 */
+                    IMU_Cal_Beep_Pose(IMU_Cal_Data.PoseCount);
                     if (IMU_Cal_Try_Fit())
                     {
                         /* 拟合成功 -> 进入参考面锁定阶段 */
@@ -460,6 +555,8 @@ void IMU_Cal(void)
                 IMU_CAL_LOG("[Cal] front-up captured (z vertical OK). Now PITCH the\r\n");
                 IMU_CAL_LOG("      module ~90 deg so its TAIL edge goes DOWN\r\n");
                 IMU_CAL_LOG("      to the table, then hold still...\r\n");
+                /* 提示音: 重力方向(正面朝上)已锁定 —— 一个长中音 */
+                IMU_Cal_Beep(Buzzer_SoundEffect_IMU_Cal_RefUp);
                 IMU_Cal_Data.CalState   = IMU_CAL_STATE_REF_FWD;
                 IMU_Cal_Data.CalPhase   = IMU_CAL_PHASE_WAIT_MOVE; /* 需先动一下再静止 */
                 IMU_Cal_Data.PhaseStartMs = now;
@@ -494,6 +591,23 @@ void IMU_Cal(void)
                     {
                         IMU_CAL_LOG("[Cal] pitch reference captured -> x/y aligned to module\r\n");
                         IMU_Cal_Finish();
+
+                        /* 提示音: 机头(前向)方向已锁定 —— 两短下滑音 */
+                        IMU_Cal_Beep(Buzzer_SoundEffect_IMU_Cal_RefFwd);
+
+                        /* ★ 标定结果写进 Flash: 以后上电只认这一份, 不再需要手填常量。
+                         *   内部擦一页(20~40 ms 停顿), 只在初始化阶段发生一次。 */
+                        if (IMU_Cal_Save_Config())
+                        {
+                            IMU_CAL_LOG("[Cal] saved to flash OK (seq=%u)\r\n", (uint32_t)Config_Seq);
+                        }
+                        else
+                        {
+                            IMU_CAL_LOG("[Cal] !! FLASH SAVE FAILED -> next boot recalibrates\r\n");
+                        }
+
+                        /* 提示音: 全部完成并已存 Flash —— 三音上行(等前向提示播完再响) */
+                        IMU_Cal_Beep_Done();
                         finished = 1;
                     }
                     else
@@ -883,7 +997,10 @@ uint8_t IMU_Cal_Compute_Frame(void)
     return 1;
 }
 
-/* 校准收尾: 计算陀螺零漂、置完成标志并打印校准参数 */
+/* 校准收尾: 计算陀螺零漂并置完成标志
+ * ⚠ 这里不再打印校准参数: 本工程 printf 没有重映射(无 fputc), 无条件打印
+ *   会停在未实现的底层输出里(表现为“标定一跑完代码就不动了”)。
+ *   结果直接看 IMU_Cal_Data.Config, 已由 IMU_Cal_Save_Config() 写入 Flash。 */
 void IMU_Cal_Finish(void)
 {
     uint8_t i;
@@ -897,31 +1014,6 @@ void IMU_Cal_Finish(void)
 
     IMU_Cal_Data.Config.Is_Calibrated = 1;
     IMU_Cal_Data.CalState = IMU_CAL_STATE_DONE;
-
-    /* 校准值固定打印, 便于记录(不随调试开关关闭) */
-    IMU_CAL_PRINTF("\r\n============ IMU CALIBRATION DONE ============\r\n");
-    IMU_CAL_PRINTF("Acc_Offset(m/s2)  : %.6f, %.6f, %.6f\r\n",
-                   IMU_Cal_Data.Config.Acc_Offset[0],
-                   IMU_Cal_Data.Config.Acc_Offset[1],
-                   IMU_Cal_Data.Config.Acc_Offset[2]);
-    IMU_CAL_PRINTF("Acc_Scale         : %.6f, %.6f, %.6f\r\n",
-                   IMU_Cal_Data.Config.Acc_Scale[0],
-                   IMU_Cal_Data.Config.Acc_Scale[1],
-                   IMU_Cal_Data.Config.Acc_Scale[2]);
-    IMU_CAL_PRINTF("Gyro_Offset(rad/s): %.6f, %.6f, %.6f\r\n",
-                   IMU_Cal_Data.Config.Gyro_Offset[0],
-                   IMU_Cal_Data.Config.Gyro_Offset[1],
-                   IMU_Cal_Data.Config.Gyro_Offset[2]);
-    IMU_CAL_PRINTF("Frame_R (chip->out):\r\n");
-    for (i = 0; i < 3; i++)
-    {
-        IMU_CAL_PRINTF("  %8.6f %8.6f %8.6f\r\n",
-                       (double)IMU_Cal_Data.Config.Frame_R[i][0],
-                       (double)IMU_Cal_Data.Config.Frame_R[i][1],
-                       (double)IMU_Cal_Data.Config.Frame_R[i][2]);
-    }
-    IMU_CAL_PRINTF("check: place FRONT face UP & still => acc should be 0,0,+g\r\n");
-    IMU_CAL_PRINTF("calibration finished. call IMU_Cal_Get_Calibrated_Data() for data.\r\n");
 }
 
 /*
